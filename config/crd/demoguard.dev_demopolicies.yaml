@@ -1,0 +1,37 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: demopolicies.demoguard.dev
+spec:
+  group: demoguard.dev
+  scope: Namespaced
+  names:
+    plural: demopolicies
+    singular: demopolicy
+    kind: DemoPolicy
+    listKind: DemoPolicyList
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - targetNamespace
+                - targetDeployment
+              properties:
+                targetNamespace:
+                  type: string
+                  minLength: 1
+                targetDeployment:
+                  type: string
+                  minLength: 1
+                minimumReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                  default: 2
