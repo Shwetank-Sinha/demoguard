@@ -1,0 +1,9 @@
+apiVersion: demoguard.dev/v1alpha1
+kind: DemoPolicy
+metadata:
+  name: hackathon-app
+  namespace: default
+spec:
+  targetNamespace: default
+  targetDeployment: hackathon-app
+  minimumReplicas: 2

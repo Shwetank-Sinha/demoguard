@@ -14,6 +14,16 @@ spec:
     - name: v1alpha1
       served: true
       storage: true
+      additionalPrinterColumns:
+        - name: Status
+          type: string
+          jsonPath: .status.readinessStatus
+        - name: Score
+          type: integer
+          jsonPath: .status.score
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
       subresources:
         status: {}
       schema:
