@@ -12,14 +12,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PrometheusClientTest {
     @Test
+    void buildsPromqlCompatiblePodRegex() {
+        String regex = PrometheusClient.podRegex(List.of("web-abc", "worker.v1-def"));
+
+        assertFalse(regex.contains("\\Q"));
+        assertFalse(regex.contains("\\E"));
+        assertEquals("web-abc|worker\\\\.v1-def", regex);
+    }
+
+    @Test
     void constructsCadvisorAndLimitQueriesForTargetPods() {
         String usage = PrometheusClient.memoryUsageQuery("demo", List.of("web-abc", "web-def"));
         String limit = PrometheusClient.memoryLimitQuery("demo", List.of("web-abc", "web-def"));
 
         assertTrue(usage.startsWith("sum(container_memory_working_set_bytes"));
         assertTrue(usage.contains("namespace=\"demo\""));
-        assertTrue(usage.contains("web-abc"));
+        assertTrue(usage.contains("pod=~\"web-abc|web-def\""));
+        assertFalse(usage.contains("\\Q"));
+        assertFalse(usage.contains("\\E"));
         assertTrue(limit.startsWith("sum(kube_pod_container_resource_limits"));
+        assertTrue(limit.contains("pod=~\"web-abc|web-def\""));
         assertTrue(limit.contains("resource=\"memory\""));
         assertTrue(limit.contains("unit=\"byte\""));
     }

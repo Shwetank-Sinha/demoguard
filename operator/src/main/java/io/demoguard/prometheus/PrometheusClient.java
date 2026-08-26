@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class PrometheusClient {
@@ -100,7 +99,9 @@ public class PrometheusClient {
 
     private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private static String escape(String value) { return value.replace("\\", "\\\\").replace("\"", "\\\""); }
-    private static String podRegex(List<String> podNames) {
-        return podNames.stream().map(Pattern::quote).collect(Collectors.joining("|"));
+    static String podRegex(List<String> podNames) {
+        return podNames.stream()
+                .map(name -> name.replace(".", "\\\\."))
+                .collect(Collectors.joining("|"));
     }
 }

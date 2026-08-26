@@ -163,7 +163,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             }
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-            unknownForecast(status, "Memory forecast unavailable because Prometheus could not be queried");
+            String detail = exception.getMessage() == null
+                    ? exception.getClass().getSimpleName() : exception.getMessage();
+            unknownForecast(status,
+                    "Memory forecast unavailable because Prometheus could not be queried: " + detail);
         }
     }
 
