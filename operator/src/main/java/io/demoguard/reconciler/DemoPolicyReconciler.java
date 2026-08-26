@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-@ControllerConfiguration
+@ControllerConfiguration(generationAwareEventProcessing = false)
 public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
 
     private static final String READINESS_SUFFIX = "-readiness";

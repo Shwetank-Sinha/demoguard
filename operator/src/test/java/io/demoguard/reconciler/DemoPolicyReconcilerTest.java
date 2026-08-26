@@ -8,15 +8,25 @@ import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudget;
 import io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudgetBuilder;
+import io.javaoperatorsdk.operator.api.reconciler.ControllerConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DemoPolicyReconcilerTest {
+
+    @Test
+    void processesMetadataOnlyPolicyUpdates() {
+        ControllerConfiguration configuration =
+                DemoPolicyReconciler.class.getAnnotation(ControllerConfiguration.class);
+
+        assertFalse(configuration.generationAwareEventProcessing());
+    }
 
     @Test
     void buildsReadinessNameAndCopiesValidationReport() {
