@@ -34,11 +34,28 @@ kubectl get demoreadiness
 kubectl get demoreadiness hackathon-app-readiness -o yaml
 ```
 
+## Blocked to Ready demo
+
+After applying the unsafe example and observing the blocked readiness result, apply the safe Deployment and its PodDisruptionBudget:
+
+```bash
+kubectl apply -f demo-workloads/safe-deployment.yaml
+kubectl apply -f demo-workloads/safe-pdb.yaml
+```
+
+Watch the workload become available, then view the updated readiness result:
+
+```bash
+kubectl rollout status deployment/hackathon-app --namespace default
+kubectl get demoreadiness hackathon-app-readiness -o yaml
+```
+
 Delete the test resources:
 
 ```bash
 kubectl delete -f demo-workloads/unsafe-policy.yaml
 kubectl delete demoreadiness hackathon-app-readiness --namespace default --ignore-not-found
+kubectl delete -f demo-workloads/safe-pdb.yaml --ignore-not-found
 kubectl delete -f demo-workloads/unsafe-deployment.yaml
 ```
 
