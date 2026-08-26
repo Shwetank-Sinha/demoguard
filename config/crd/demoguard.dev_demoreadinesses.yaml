@@ -37,6 +37,8 @@ spec:
                 - score
                 - findings
                 - recommendations
+                - memoryRisk
+                - predictionMessage
               properties:
                 readinessStatus:
                   type: string
@@ -54,3 +56,20 @@ spec:
                   type: array
                   items:
                     type: string
+                memoryRisk:
+                  type: string
+                  enum: [SAFE, AT_RISK, UNKNOWN]
+                currentMemoryBytes:
+                  type: integer
+                  format: int64
+                memoryLimitBytes:
+                  type: integer
+                  format: int64
+                predictedMemoryBytesAtDemoEnd:
+                  type: integer
+                  format: int64
+                predictedLimitBreachInMinutes:
+                  type: number
+                  format: double
+                predictionMessage:
+                  type: string

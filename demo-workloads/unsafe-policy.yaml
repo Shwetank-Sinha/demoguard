@@ -7,3 +7,4 @@ spec:
   targetNamespace: default
   targetDeployment: hackathon-app
   minimumReplicas: 2
+  demoDurationMinutes: 30

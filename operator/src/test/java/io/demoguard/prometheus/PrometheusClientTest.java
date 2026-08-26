@@ -1,0 +1,43 @@
+package io.demoguard.prometheus;
+
+import org.junit.jupiter.api.Test;
+
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class PrometheusClientTest {
+    @Test
+    void constructsCadvisorAndLimitQueriesForTargetPods() {
+        String usage = PrometheusClient.memoryUsageQuery("demo", List.of("web-abc", "web-def"));
+        String limit = PrometheusClient.memoryLimitQuery("demo", List.of("web-abc", "web-def"));
+
+        assertTrue(usage.startsWith("sum(container_memory_working_set_bytes"));
+        assertTrue(usage.contains("namespace=\"demo\""));
+        assertTrue(usage.contains("web-abc"));
+        assertTrue(limit.startsWith("sum(kube_pod_container_resource_limits"));
+        assertTrue(limit.contains("resource=\"memory\""));
+        assertTrue(limit.contains("unit=\"byte\""));
+    }
+
+    @Test
+    void constructsEncodedInstantAndRangeApiUris() {
+        String query = "sum(metric{namespace=\"demo\"})";
+        var instant = PrometheusClient.buildInstantQueryUri("http://prometheus:9090", query);
+        var range = PrometheusClient.buildRangeQueryUri("http://prometheus:9090", query,
+                Instant.ofEpochSecond(100), Instant.ofEpochSecond(400), Duration.ofSeconds(60));
+
+        assertEquals("/api/v1/query", instant.getPath());
+        assertEquals("query=" + query, URLDecoder.decode(instant.getRawQuery(), StandardCharsets.UTF_8));
+        String decodedRange = URLDecoder.decode(range.getRawQuery(), StandardCharsets.UTF_8);
+        assertEquals("/api/v1/query_range", range.getPath());
+        assertTrue(decodedRange.contains("query=" + query));
+        assertTrue(decodedRange.contains("start=100"));
+        assertTrue(decodedRange.contains("end=400"));
+        assertTrue(decodedRange.contains("step=60"));
+    }
+}

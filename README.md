@@ -1,6 +1,6 @@
 # DemoGuard
 
-DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness.
+DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. In addition to static Deployment and PodDisruptionBudget checks, it uses Prometheus memory history to provide a low-confidence memory-risk forecast for the planned demo window.
 
 The operator uses the current kubeconfig and active Kubernetes context when run locally. It watches `DemoPolicy` resources and writes the validation result to a same-namespace `DemoReadiness` resource.
 
@@ -13,12 +13,16 @@ kubectl apply -f config/crd/demoguard.dev_demopolicies.yaml
 kubectl apply -f config/crd/demoguard.dev_demoreadinesses.yaml
 ```
 
-Start the operator locally in a separate terminal:
+The `DemoPolicy` field `spec.demoDurationMinutes` controls the forecast window and defaults to 30 minutes. DemoGuard reads the Prometheus base URL from `PROMETHEUS_URL`; it defaults to `http://localhost:9090` for local development.
+
+Start the operator locally in a separate terminal, pointing it at Prometheus:
 
 ```bash
 cd operator
-mvn exec:java
+PROMETHEUS_URL=http://localhost:9090 mvn exec:java
 ```
+
+Prometheus must expose cAdvisor's `container_memory_working_set_bytes` and kube-state-metrics' `kube_pod_container_resource_limits`. If Prometheus is unavailable or does not have enough data, `memoryRisk` is `UNKNOWN`; static readiness validation continues normally. An otherwise `READY` workload with an `AT_RISK` forecast is reported as `WARNING`, never `BLOCKED` solely because of the prediction.
 
 Apply the deliberately unsafe Deployment and its policy:
 

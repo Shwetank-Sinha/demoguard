@@ -35,3 +35,9 @@ spec:
                   format: int32
                   minimum: 0
                   default: 2
+                demoDurationMinutes:
+                  description: Duration of the planned demo used for memory-risk forecasting.
+                  type: integer
+                  format: int32
+                  minimum: 1
+                  default: 30
