@@ -9,9 +9,12 @@ import io.demoguard.prediction.MemoryForecaster;
 import io.demoguard.prediction.MemoryForecaster.Forecast;
 import io.demoguard.prediction.MemoryForecaster.MemoryRisk;
 import io.demoguard.prometheus.PrometheusClient;
+import io.demoguard.runtime.RuntimeHealthReport;
+import io.demoguard.runtime.RuntimeHealthValidator;
 import io.demoguard.validation.DeploymentValidator;
 import io.demoguard.validation.ReadinessReport;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
+import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.policy.v1.PodDisruptionBudget;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -36,21 +39,30 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     private final DeploymentValidator validator;
     private final PrometheusClient prometheus;
     private final MemoryForecaster forecaster;
+    private final RuntimeHealthValidator runtimeValidator;
 
     public DemoPolicyReconciler(KubernetesClient client) {
-        this(client, new DeploymentValidator(), new PrometheusClient(), new MemoryForecaster());
+        this(client, new DeploymentValidator(), new PrometheusClient(), new MemoryForecaster(),
+                new RuntimeHealthValidator());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator) {
-        this(client, validator, new PrometheusClient(), new MemoryForecaster());
+        this(client, validator, new PrometheusClient(), new MemoryForecaster(), new RuntimeHealthValidator());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
                          PrometheusClient prometheus, MemoryForecaster forecaster) {
+        this(client, validator, prometheus, forecaster, new RuntimeHealthValidator());
+    }
+
+    DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
+                         PrometheusClient prometheus, MemoryForecaster forecaster,
+                         RuntimeHealthValidator runtimeValidator) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.validator = Objects.requireNonNull(validator, "validator must not be null");
         this.prometheus = Objects.requireNonNull(prometheus, "prometheus must not be null");
         this.forecaster = Objects.requireNonNull(forecaster, "forecaster must not be null");
+        this.runtimeValidator = Objects.requireNonNull(runtimeValidator, "runtimeValidator must not be null");
     }
 
     @Override
@@ -73,6 +85,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             int minimumReplicas = spec.getMinimumReplicas() == null
                     ? DemoPolicySpec.DEFAULT_MINIMUM_REPLICAS : spec.getMinimumReplicas();
             status = statusFrom(validator.validate(deployment, pdb, minimumReplicas));
+            List<Pod> pods = targetPods(deployment, spec.getTargetNamespace());
+            mergeRuntime(status, runtimeValidator.validate(deployment, pods, minimumReplicas));
             addMemoryForecast(deployment, spec, status);
         }
 
@@ -116,6 +130,40 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         return status;
     }
 
+    private List<Pod> targetPods(Deployment deployment, String namespace) {
+        if (deployment.getSpec() == null || deployment.getSpec().getSelector() == null
+                || deployment.getSpec().getSelector().getMatchLabels() == null) {
+            return List.of();
+        }
+        return client.pods().inNamespace(namespace)
+                .withLabels(deployment.getSpec().getSelector().getMatchLabels()).list().getItems();
+    }
+
+    static void mergeRuntime(DemoReadinessStatus status, RuntimeHealthReport runtime) {
+        status.setRuntimeStatus(runtime.runtimeStatus());
+        status.setDesiredReplicas(runtime.desiredReplicas());
+        status.setReadyReplicas(runtime.readyReplicas());
+        status.setAvailableReplicas(runtime.availableReplicas());
+        status.setUnavailableReplicas(runtime.unavailableReplicas());
+        status.setTotalRestarts(runtime.totalRestarts());
+        status.setRuntimeMessage(runtime.runtimeMessage());
+        status.setFindings(append(status.getFindings(), runtime.findings()));
+        status.setRecommendations(append(status.getRecommendations(), runtime.recommendations()));
+
+        if (runtime.runtimeStatus() == io.demoguard.api.RuntimeStatus.UNHEALTHY) {
+            status.setReadinessStatus(ReadinessStatus.BLOCKED);
+        } else if (runtime.runtimeStatus() == io.demoguard.api.RuntimeStatus.DEGRADED
+                && status.getReadinessStatus() == ReadinessStatus.READY) {
+            status.setReadinessStatus(ReadinessStatus.WARNING);
+        }
+    }
+
+    private static List<String> append(List<String> existing, List<String> additions) {
+        List<String> combined = new ArrayList<>(existing);
+        combined.addAll(additions);
+        return combined;
+    }
+
     private void addMemoryForecast(Deployment deployment, DemoPolicySpec spec, DemoReadinessStatus status) {
         try {
             List<String> podNames = client.pods().inNamespace(spec.getTargetNamespace())
@@ -152,14 +200,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             status.setPredictedLimitBreachInMinutes(forecast.predictedLimitBreachInMinutes());
             status.setPredictionMessage(forecast.message());
 
-            if (forecast.risk() == MemoryRisk.AT_RISK && status.getReadinessStatus() == ReadinessStatus.READY) {
-                status.setReadinessStatus(ReadinessStatus.WARNING);
-                List<String> findings = new ArrayList<>(status.getFindings());
-                findings.add("Memory usage may reach its limit during the declared demo duration");
-                status.setFindings(findings);
-                List<String> recommendations = new ArrayList<>(status.getRecommendations());
-                recommendations.add("Review memory growth and capacity before the demo");
-                status.setRecommendations(recommendations);
+            if (forecast.risk() == MemoryRisk.AT_RISK) {
+                applyMemoryRiskWarning(status);
             }
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -170,8 +212,22 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         }
     }
 
+    static void applyMemoryRiskWarning(DemoReadinessStatus status) {
+        if (status.getReadinessStatus() == ReadinessStatus.READY) {
+                status.setReadinessStatus(ReadinessStatus.WARNING);
+                List<String> findings = new ArrayList<>(status.getFindings());
+                findings.add("Memory usage may reach its limit during the declared demo duration");
+                status.setFindings(findings);
+                List<String> recommendations = new ArrayList<>(status.getRecommendations());
+                recommendations.add("Review memory growth and capacity before the demo");
+                status.setRecommendations(recommendations);
+        }
+    }
+
     private static void unknownForecast(DemoReadinessStatus status, String message) {
         status.setMemoryRisk(MemoryRisk.UNKNOWN);
+        status.setRuntimeStatus(io.demoguard.api.RuntimeStatus.UNHEALTHY);
+        status.setRuntimeMessage("Runtime health unavailable because the target Deployment was not found");
         status.setPredictionMessage(message);
     }
 

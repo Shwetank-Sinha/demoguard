@@ -1,6 +1,6 @@
 # DemoGuard
 
-DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. In addition to static Deployment and PodDisruptionBudget checks, it uses Prometheus memory history to provide a low-confidence memory-risk forecast for the planned demo window.
+DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. It combines static Deployment and PodDisruptionBudget checks, live Deployment and pod health, and a low-confidence Prometheus memory-risk forecast for the planned demo window.
 
 The operator uses the current kubeconfig and active Kubernetes context when run locally. It watches `DemoPolicy` resources and writes the validation result to a same-namespace `DemoReadiness` resource.
 
@@ -24,6 +24,10 @@ PROMETHEUS_URL=http://localhost:9090 mvn exec:java
 
 Prometheus must expose cAdvisor's `container_memory_working_set_bytes` and kube-state-metrics' `kube_pod_container_resource_limits`. If Prometheus is unavailable or does not have enough data, `memoryRisk` is `UNKNOWN`; static readiness validation continues normally. An otherwise `READY` workload with an `AT_RISK` forecast is reported as `WARNING`, never `BLOCKED` solely because of the prediction.
 
+For runtime validation, DemoGuard reads the Deployment's desired, Ready, available, and unavailable replica counts and inspects pods selected by the Deployment. It reports aggregate container restart counts, pod phases, and active waiting reasons including `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, and `CreateContainerConfigError`.
+
+`runtimeStatus` is `HEALTHY`, `DEGRADED`, or `UNHEALTHY`. Zero Ready or available replicas, failed pods, and active fatal container waiting states block the demo. Replica counts below `spec.minimumReplicas` and restarts without an active crash loop produce a warning. Static `BLOCKED` results always remain blocked, while memory risk can promote `READY` to `WARNING` but cannot weaken a block.
+
 Apply the deliberately unsafe Deployment and its policy:
 
 ```bash
@@ -31,7 +35,7 @@ kubectl apply -f demo-workloads/unsafe-deployment.yaml
 kubectl apply -f demo-workloads/unsafe-policy.yaml
 ```
 
-View the generated readiness result (the CRD prints `NAME`, `STATUS`, `SCORE`, and `AGE`):
+View the generated readiness result (the CRD also prints runtime health and Ready replicas):
 
 ```bash
 kubectl get demoreadiness

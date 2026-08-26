@@ -35,6 +35,13 @@ class CustomResourceModelTest {
         status.setPredictedMemoryBytesAtDemoEnd(150L);
         status.setPredictedLimitBreachInMinutes(45.0);
         status.setPredictionMessage("limited-confidence forecast");
+        status.setRuntimeStatus(RuntimeStatus.DEGRADED);
+        status.setDesiredReplicas(3);
+        status.setReadyReplicas(2);
+        status.setAvailableReplicas(2);
+        status.setUnavailableReplicas(1);
+        status.setTotalRestarts(4);
+        status.setRuntimeMessage("one replica is unavailable");
 
         DemoReadiness readiness = new DemoReadiness();
         readiness.setStatus(status);
@@ -50,5 +57,12 @@ class CustomResourceModelTest {
         assertEquals(150L, readiness.getStatus().getPredictedMemoryBytesAtDemoEnd());
         assertEquals(45.0, readiness.getStatus().getPredictedLimitBreachInMinutes());
         assertEquals("limited-confidence forecast", readiness.getStatus().getPredictionMessage());
+        assertEquals(RuntimeStatus.DEGRADED, readiness.getStatus().getRuntimeStatus());
+        assertEquals(3, readiness.getStatus().getDesiredReplicas());
+        assertEquals(2, readiness.getStatus().getReadyReplicas());
+        assertEquals(2, readiness.getStatus().getAvailableReplicas());
+        assertEquals(1, readiness.getStatus().getUnavailableReplicas());
+        assertEquals(4, readiness.getStatus().getTotalRestarts());
+        assertEquals("one replica is unavailable", readiness.getStatus().getRuntimeMessage());
     }
 }

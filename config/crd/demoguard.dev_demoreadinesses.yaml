@@ -21,6 +21,12 @@ spec:
         - name: Score
           type: integer
           jsonPath: .status.score
+        - name: Runtime
+          type: string
+          jsonPath: .status.runtimeStatus
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyReplicas
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp
@@ -39,6 +45,13 @@ spec:
                 - recommendations
                 - memoryRisk
                 - predictionMessage
+                - runtimeStatus
+                - desiredReplicas
+                - readyReplicas
+                - availableReplicas
+                - unavailableReplicas
+                - totalRestarts
+                - runtimeMessage
               properties:
                 readinessStatus:
                   type: string
@@ -72,4 +85,29 @@ spec:
                   type: number
                   format: double
                 predictionMessage:
+                  type: string
+                runtimeStatus:
+                  type: string
+                  enum: [HEALTHY, DEGRADED, UNHEALTHY]
+                desiredReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                readyReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                availableReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                unavailableReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                totalRestarts:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                runtimeMessage:
                   type: string

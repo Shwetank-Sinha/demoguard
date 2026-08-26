@@ -17,6 +17,13 @@ public class DemoReadinessStatus {
     private Long predictedMemoryBytesAtDemoEnd;
     private Double predictedLimitBreachInMinutes;
     private String predictionMessage = "Memory forecast has not been evaluated";
+    private RuntimeStatus runtimeStatus;
+    private int desiredReplicas;
+    private int readyReplicas;
+    private int availableReplicas;
+    private int unavailableReplicas;
+    private int totalRestarts;
+    private String runtimeMessage;
 
     public ReadinessStatus getReadinessStatus() {
         return readinessStatus;
@@ -62,4 +69,18 @@ public class DemoReadinessStatus {
     public void setPredictedLimitBreachInMinutes(Double value) { this.predictedLimitBreachInMinutes = value; }
     public String getPredictionMessage() { return predictionMessage; }
     public void setPredictionMessage(String predictionMessage) { this.predictionMessage = predictionMessage; }
+    public RuntimeStatus getRuntimeStatus() { return runtimeStatus; }
+    public void setRuntimeStatus(RuntimeStatus runtimeStatus) { this.runtimeStatus = runtimeStatus; }
+    public int getDesiredReplicas() { return desiredReplicas; }
+    public void setDesiredReplicas(int desiredReplicas) { this.desiredReplicas = desiredReplicas; }
+    public int getReadyReplicas() { return readyReplicas; }
+    public void setReadyReplicas(int readyReplicas) { this.readyReplicas = readyReplicas; }
+    public int getAvailableReplicas() { return availableReplicas; }
+    public void setAvailableReplicas(int availableReplicas) { this.availableReplicas = availableReplicas; }
+    public int getUnavailableReplicas() { return unavailableReplicas; }
+    public void setUnavailableReplicas(int unavailableReplicas) { this.unavailableReplicas = unavailableReplicas; }
+    public int getTotalRestarts() { return totalRestarts; }
+    public void setTotalRestarts(int totalRestarts) { this.totalRestarts = totalRestarts; }
+    public String getRuntimeMessage() { return runtimeMessage; }
+    public void setRuntimeMessage(String runtimeMessage) { this.runtimeMessage = runtimeMessage; }
 }
