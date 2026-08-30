@@ -56,8 +56,8 @@ public final class MemoryForecaster {
             return new Forecast(MemoryRisk.AT_RISK, predicted, breachMinutes,
                     "The linear trend projects a memory-limit breach during the demo; this is a low-confidence estimate");
         }
-        return new Forecast(MemoryRisk.SAFE, predicted, breachMinutes,
-                "The linear trend does not project a memory-limit breach during the demo; confidence is limited");
+        return new Forecast(MemoryRisk.SAFE, predicted, null,
+                "No memory-limit breach is projected during the demo window; confidence is limited");
     }
 
     private static long nonNegativeRounded(double value) {

@@ -4,6 +4,7 @@ import io.fabric8.kubernetes.api.model.Namespaced;
 import io.fabric8.kubernetes.model.annotation.Group;
 import io.fabric8.kubernetes.model.annotation.Version;
 import io.demoguard.prediction.MemoryForecaster.MemoryRisk;
+import io.demoguard.prediction.CpuForecaster.CpuRisk;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -35,6 +36,12 @@ class CustomResourceModelTest {
         status.setPredictedMemoryBytesAtDemoEnd(150L);
         status.setPredictedLimitBreachInMinutes(45.0);
         status.setPredictionMessage("limited-confidence forecast");
+        status.setCpuRisk(CpuRisk.AT_RISK);
+        status.setCurrentCpuCores(0.7);
+        status.setCpuLimitCores(1.0);
+        status.setPredictedCpuCoresAtDemoEnd(0.9);
+        status.setCpuThrottlingRate(0.12);
+        status.setCpuPredictionMessage("CPU forecast");
         status.setRuntimeStatus(RuntimeStatus.DEGRADED);
         status.setDesiredReplicas(3);
         status.setReadyReplicas(2);
@@ -57,6 +64,12 @@ class CustomResourceModelTest {
         assertEquals(150L, readiness.getStatus().getPredictedMemoryBytesAtDemoEnd());
         assertEquals(45.0, readiness.getStatus().getPredictedLimitBreachInMinutes());
         assertEquals("limited-confidence forecast", readiness.getStatus().getPredictionMessage());
+        assertEquals(CpuRisk.AT_RISK, readiness.getStatus().getCpuRisk());
+        assertEquals(0.7, readiness.getStatus().getCurrentCpuCores());
+        assertEquals(1.0, readiness.getStatus().getCpuLimitCores());
+        assertEquals(0.9, readiness.getStatus().getPredictedCpuCoresAtDemoEnd());
+        assertEquals(0.12, readiness.getStatus().getCpuThrottlingRate());
+        assertEquals("CPU forecast", readiness.getStatus().getCpuPredictionMessage());
         assertEquals(RuntimeStatus.DEGRADED, readiness.getStatus().getRuntimeStatus());
         assertEquals(3, readiness.getStatus().getDesiredReplicas());
         assertEquals(2, readiness.getStatus().getReadyReplicas());

@@ -88,6 +88,28 @@ class DemoPolicyReconcilerTest {
         assertEquals(RuntimeStatus.UNHEALTHY, status.getRuntimeStatus());
     }
 
+    @Test
+    void cpuRiskPromotesReadyToWarning() {
+        DemoReadinessStatus status = DemoPolicyReconciler.statusFrom(
+                new ReadinessReport(5, 5, List.of(), List.of()));
+
+        DemoPolicyReconciler.applyCpuRiskWarning(status);
+
+        assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
+        assertTrue(status.getFindings().getFirst().contains("CPU"));
+    }
+
+    @Test
+    void cpuRiskDoesNotOverrideBlockedFinalStatus() {
+        DemoReadinessStatus status = DemoPolicyReconciler.statusFrom(
+                new ReadinessReport(2, 5, List.of("static failure"), List.of("fix")));
+
+        DemoPolicyReconciler.applyCpuRiskWarning(status);
+
+        assertEquals(ReadinessStatus.BLOCKED, status.getReadinessStatus());
+        assertEquals(List.of("static failure"), status.getFindings());
+    }
+
     private PodDisruptionBudget pdb(String name, Map<String, String> labels) {
         return new PodDisruptionBudgetBuilder()
                 .withNewMetadata().withName(name).withNamespace("default").endMetadata()

@@ -37,6 +37,22 @@ class PrometheusClientTest {
     }
 
     @Test
+    void constructsCpuUsageLimitAndThrottlingQueries() {
+        var pods = List.of("web-abc", "web-def");
+        String usage = PrometheusClient.cpuUsageQuery("demo", pods);
+        String limit = PrometheusClient.cpuLimitQuery("demo", pods);
+        String throttling = PrometheusClient.cpuThrottlingQuery("demo", pods);
+
+        assertTrue(usage.startsWith("sum(rate(container_cpu_usage_seconds_total"));
+        assertTrue(usage.contains("[5m]"));
+        assertTrue(limit.startsWith("sum(kube_pod_container_resource_limits"));
+        assertTrue(limit.contains("resource=\"cpu\""));
+        assertTrue(limit.contains("unit=\"core\""));
+        assertTrue(throttling.startsWith("sum(rate(container_cpu_cfs_throttled_seconds_total"));
+        assertTrue(throttling.contains("pod=~\"web-abc|web-def\""));
+    }
+
+    @Test
     void constructsEncodedInstantAndRangeApiUris() {
         String query = "sum(metric{namespace=\"demo\"})";
         var instant = PrometheusClient.buildInstantQueryUri("http://prometheus:9090", query);

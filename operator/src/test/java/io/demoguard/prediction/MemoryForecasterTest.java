@@ -49,6 +49,7 @@ class MemoryForecasterTest {
 
         assertEquals(MemoryRisk.SAFE, result.risk());
         assertEquals(520L, result.predictedMemoryBytesAtDemoEnd());
-        assertEquals(13.0, result.predictedLimitBreachInMinutes(), 0.0001);
+        assertNull(result.predictedLimitBreachInMinutes());
+        assertTrue(result.message().contains("during the demo window"));
     }
 }

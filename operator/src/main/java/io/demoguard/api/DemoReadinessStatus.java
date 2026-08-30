@@ -1,6 +1,7 @@
 package io.demoguard.api;
 
 import io.demoguard.prediction.MemoryForecaster.MemoryRisk;
+import io.demoguard.prediction.CpuForecaster.CpuRisk;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +18,12 @@ public class DemoReadinessStatus {
     private Long predictedMemoryBytesAtDemoEnd;
     private Double predictedLimitBreachInMinutes;
     private String predictionMessage = "Memory forecast has not been evaluated";
+    private CpuRisk cpuRisk = CpuRisk.UNKNOWN;
+    private Double currentCpuCores;
+    private Double cpuLimitCores;
+    private Double predictedCpuCoresAtDemoEnd;
+    private Double cpuThrottlingRate;
+    private String cpuPredictionMessage = "CPU forecast has not been evaluated";
     private RuntimeStatus runtimeStatus;
     private int desiredReplicas;
     private int readyReplicas;
@@ -69,6 +76,18 @@ public class DemoReadinessStatus {
     public void setPredictedLimitBreachInMinutes(Double value) { this.predictedLimitBreachInMinutes = value; }
     public String getPredictionMessage() { return predictionMessage; }
     public void setPredictionMessage(String predictionMessage) { this.predictionMessage = predictionMessage; }
+    public CpuRisk getCpuRisk() { return cpuRisk; }
+    public void setCpuRisk(CpuRisk cpuRisk) { this.cpuRisk = cpuRisk; }
+    public Double getCurrentCpuCores() { return currentCpuCores; }
+    public void setCurrentCpuCores(Double currentCpuCores) { this.currentCpuCores = currentCpuCores; }
+    public Double getCpuLimitCores() { return cpuLimitCores; }
+    public void setCpuLimitCores(Double cpuLimitCores) { this.cpuLimitCores = cpuLimitCores; }
+    public Double getPredictedCpuCoresAtDemoEnd() { return predictedCpuCoresAtDemoEnd; }
+    public void setPredictedCpuCoresAtDemoEnd(Double value) { this.predictedCpuCoresAtDemoEnd = value; }
+    public Double getCpuThrottlingRate() { return cpuThrottlingRate; }
+    public void setCpuThrottlingRate(Double cpuThrottlingRate) { this.cpuThrottlingRate = cpuThrottlingRate; }
+    public String getCpuPredictionMessage() { return cpuPredictionMessage; }
+    public void setCpuPredictionMessage(String value) { this.cpuPredictionMessage = value; }
     public RuntimeStatus getRuntimeStatus() { return runtimeStatus; }
     public void setRuntimeStatus(RuntimeStatus runtimeStatus) { this.runtimeStatus = runtimeStatus; }
     public int getDesiredReplicas() { return desiredReplicas; }

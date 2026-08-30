@@ -6,6 +6,8 @@ import io.demoguard.api.DemoReadiness;
 import io.demoguard.api.DemoReadinessStatus;
 import io.demoguard.api.ReadinessStatus;
 import io.demoguard.prediction.MemoryForecaster;
+import io.demoguard.prediction.CpuForecaster;
+import io.demoguard.prediction.CpuForecaster.CpuRisk;
 import io.demoguard.prediction.MemoryForecaster.Forecast;
 import io.demoguard.prediction.MemoryForecaster.MemoryRisk;
 import io.demoguard.prometheus.PrometheusClient;
@@ -39,29 +41,33 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     private final DeploymentValidator validator;
     private final PrometheusClient prometheus;
     private final MemoryForecaster forecaster;
+    private final CpuForecaster cpuForecaster;
     private final RuntimeHealthValidator runtimeValidator;
 
     public DemoPolicyReconciler(KubernetesClient client) {
-        this(client, new DeploymentValidator(), new PrometheusClient(), new MemoryForecaster(),
+        this(client, new DeploymentValidator(), new PrometheusClient(), new MemoryForecaster(), new CpuForecaster(),
                 new RuntimeHealthValidator());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator) {
-        this(client, validator, new PrometheusClient(), new MemoryForecaster(), new RuntimeHealthValidator());
+        this(client, validator, new PrometheusClient(), new MemoryForecaster(), new CpuForecaster(),
+                new RuntimeHealthValidator());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
                          PrometheusClient prometheus, MemoryForecaster forecaster) {
-        this(client, validator, prometheus, forecaster, new RuntimeHealthValidator());
+        this(client, validator, prometheus, forecaster, new CpuForecaster(), new RuntimeHealthValidator());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
                          PrometheusClient prometheus, MemoryForecaster forecaster,
+                         CpuForecaster cpuForecaster,
                          RuntimeHealthValidator runtimeValidator) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.validator = Objects.requireNonNull(validator, "validator must not be null");
         this.prometheus = Objects.requireNonNull(prometheus, "prometheus must not be null");
         this.forecaster = Objects.requireNonNull(forecaster, "forecaster must not be null");
+        this.cpuForecaster = Objects.requireNonNull(cpuForecaster, "cpuForecaster must not be null");
         this.runtimeValidator = Objects.requireNonNull(runtimeValidator, "runtimeValidator must not be null");
     }
 
@@ -87,7 +93,9 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             status = statusFrom(validator.validate(deployment, pdb, minimumReplicas));
             List<Pod> pods = targetPods(deployment, spec.getTargetNamespace());
             mergeRuntime(status, runtimeValidator.validate(deployment, pods, minimumReplicas));
-            addMemoryForecast(deployment, spec, status);
+            List<String> podNames = pods.stream().map(pod -> pod.getMetadata().getName()).toList();
+            addMemoryForecast(spec, status, podNames);
+            addCpuForecast(spec, status, podNames);
         }
 
         upsertReadiness(policy.getMetadata().getName(), policyNamespace, status);
@@ -164,13 +172,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         return combined;
     }
 
-    private void addMemoryForecast(Deployment deployment, DemoPolicySpec spec, DemoReadinessStatus status) {
+    private void addMemoryForecast(DemoPolicySpec spec, DemoReadinessStatus status, List<String> podNames) {
         try {
-            List<String> podNames = client.pods().inNamespace(spec.getTargetNamespace())
-                    .withLabels(deployment.getSpec().getSelector().getMatchLabels()).list().getItems().stream()
-                    .map(pod -> pod.getMetadata().getName()).toList();
             if (podNames.isEmpty()) {
-                unknownForecast(status, "No pods for the target Deployment were found in Prometheus scope");
+                unknownMemoryForecast(status, "No pods for the target Deployment were found in Prometheus scope");
                 return;
             }
 
@@ -179,7 +184,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             var current = prometheus.query(usageQuery);
             var limit = prometheus.query(limitQuery);
             if (current.isEmpty() || limit.isEmpty() || limit.getAsDouble() <= 0) {
-                unknownForecast(status, "Prometheus did not return current memory usage and a positive memory limit");
+                unknownMemoryForecast(status, "Prometheus did not return current memory usage and a positive memory limit");
                 return;
             }
 
@@ -207,8 +212,48 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
             String detail = exception.getMessage() == null
                     ? exception.getClass().getSimpleName() : exception.getMessage();
-            unknownForecast(status,
+            unknownMemoryForecast(status,
                     "Memory forecast unavailable because Prometheus could not be queried: " + detail);
+        }
+    }
+
+    private void addCpuForecast(DemoPolicySpec spec, DemoReadinessStatus status, List<String> podNames) {
+        try {
+            if (podNames.isEmpty()) {
+                unknownCpuForecast(status, "No pods for the target Deployment were found in Prometheus scope");
+                return;
+            }
+            String usageQuery = PrometheusClient.cpuUsageQuery(spec.getTargetNamespace(), podNames);
+            var current = prometheus.query(usageQuery);
+            var limit = prometheus.query(PrometheusClient.cpuLimitQuery(spec.getTargetNamespace(), podNames));
+            if (current.isEmpty() || limit.isEmpty() || limit.getAsDouble() <= 0) {
+                unknownCpuForecast(status, "Prometheus did not return current CPU usage and a positive CPU limit");
+                return;
+            }
+            status.setCurrentCpuCores(current.getAsDouble());
+            status.setCpuLimitCores(limit.getAsDouble());
+            var throttling = prometheus.query(
+                    PrometheusClient.cpuThrottlingQuery(spec.getTargetNamespace(), podNames));
+            Double throttlingRate = throttling.isPresent() ? throttling.getAsDouble() : null;
+            status.setCpuThrottlingRate(throttlingRate);
+
+            int demoMinutes = spec.getDemoDurationMinutes() == null
+                    ? DemoPolicySpec.DEFAULT_DEMO_DURATION_MINUTES : spec.getDemoDurationMinutes();
+            Instant end = Instant.now();
+            Instant start = end.minus(Duration.ofMinutes(Math.max(demoMinutes, 30)));
+            var forecast = cpuForecaster.forecast(
+                    prometheus.queryCpuRange(usageQuery, start, end, Duration.ofMinutes(1)),
+                    limit.getAsDouble(), demoMinutes, throttlingRate);
+            status.setCpuRisk(forecast.risk());
+            status.setPredictedCpuCoresAtDemoEnd(forecast.predictedCpuCoresAtDemoEnd());
+            status.setCpuPredictionMessage(forecast.message());
+            if (forecast.risk() == CpuRisk.AT_RISK) applyCpuRiskWarning(status);
+        } catch (Exception exception) {
+            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
+            String detail = exception.getMessage() == null
+                    ? exception.getClass().getSimpleName() : exception.getMessage();
+            unknownCpuForecast(status,
+                    "CPU forecast unavailable because Prometheus could not be queried: " + detail);
         }
     }
 
@@ -224,11 +269,24 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         }
     }
 
-    private static void unknownForecast(DemoReadinessStatus status, String message) {
+    static void applyCpuRiskWarning(DemoReadinessStatus status) {
+        if (status.getReadinessStatus() == ReadinessStatus.READY) {
+            status.setReadinessStatus(ReadinessStatus.WARNING);
+            status.setFindings(append(status.getFindings(),
+                    List.of("CPU usage or throttling may affect the workload during the demo")));
+            status.setRecommendations(append(status.getRecommendations(),
+                    List.of("Review CPU demand, limits, and throttling before the demo")));
+        }
+    }
+
+    private static void unknownMemoryForecast(DemoReadinessStatus status, String message) {
         status.setMemoryRisk(MemoryRisk.UNKNOWN);
-        status.setRuntimeStatus(io.demoguard.api.RuntimeStatus.UNHEALTHY);
-        status.setRuntimeMessage("Runtime health unavailable because the target Deployment was not found");
         status.setPredictionMessage(message);
+    }
+
+    private static void unknownCpuForecast(DemoReadinessStatus status, String message) {
+        status.setCpuRisk(CpuRisk.UNKNOWN);
+        status.setCpuPredictionMessage(message);
     }
 
     private static DemoReadinessStatus missingDeploymentStatus(DemoPolicySpec spec) {
@@ -237,6 +295,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         status.setScore(0);
         status.setMemoryRisk(MemoryRisk.UNKNOWN);
         status.setPredictionMessage("Memory forecast unavailable because the target Deployment was not found");
+        status.setCpuRisk(CpuRisk.UNKNOWN);
+        status.setCpuPredictionMessage("CPU forecast unavailable because the target Deployment was not found");
+        status.setRuntimeStatus(io.demoguard.api.RuntimeStatus.UNHEALTHY);
+        status.setRuntimeMessage("Runtime health unavailable because the target Deployment was not found");
         status.setFindings(List.of("Target Deployment " + spec.getTargetNamespace() + "/"
                 + spec.getTargetDeployment() + " was not found"));
         status.setRecommendations(List.of("Create the target Deployment or correct the DemoPolicy target"));

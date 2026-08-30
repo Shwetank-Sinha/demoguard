@@ -24,6 +24,9 @@ spec:
         - name: Runtime
           type: string
           jsonPath: .status.runtimeStatus
+        - name: CPU Risk
+          type: string
+          jsonPath: .status.cpuRisk
         - name: Ready
           type: integer
           jsonPath: .status.readyReplicas
@@ -45,6 +48,8 @@ spec:
                 - recommendations
                 - memoryRisk
                 - predictionMessage
+                - cpuRisk
+                - cpuPredictionMessage
                 - runtimeStatus
                 - desiredReplicas
                 - readyReplicas
@@ -85,6 +90,23 @@ spec:
                   type: number
                   format: double
                 predictionMessage:
+                  type: string
+                cpuRisk:
+                  type: string
+                  enum: [SAFE, AT_RISK, UNKNOWN]
+                currentCpuCores:
+                  type: number
+                  format: double
+                cpuLimitCores:
+                  type: number
+                  format: double
+                predictedCpuCoresAtDemoEnd:
+                  type: number
+                  format: double
+                cpuThrottlingRate:
+                  type: number
+                  format: double
+                cpuPredictionMessage:
                   type: string
                 runtimeStatus:
                   type: string

@@ -3,6 +3,7 @@ package io.demoguard.prometheus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.demoguard.prediction.MemoryForecaster.MemorySample;
+import io.demoguard.prediction.CpuForecaster.CpuSample;
 
 import java.io.IOException;
 import java.net.URI;
@@ -63,6 +64,21 @@ public class PrometheusClient {
         return samples;
     }
 
+    public List<CpuSample> queryCpuRange(String promql, Instant start, Instant end, Duration step)
+            throws IOException, InterruptedException {
+        JsonNode result = execute(buildRangeQueryUri(baseUrl, promql, start, end, step))
+                .path("data").path("result");
+        List<CpuSample> samples = new ArrayList<>();
+        if (result.isArray()) {
+            for (JsonNode series : result) {
+                for (JsonNode value : series.path("values")) {
+                    samples.add(new CpuSample(value.get(0).asLong(), Double.parseDouble(value.get(1).asText())));
+                }
+            }
+        }
+        return samples;
+    }
+
     private JsonNode execute(URI uri) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(5)).GET().build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -80,6 +96,21 @@ public class PrometheusClient {
     public static String memoryLimitQuery(String namespace, List<String> podNames) {
         return "sum(kube_pod_container_resource_limits{namespace=\"" + escape(namespace)
                 + "\",pod=~\"" + podRegex(podNames) + "\",resource=\"memory\",unit=\"byte\"})";
+    }
+
+    public static String cpuUsageQuery(String namespace, List<String> podNames) {
+        return "sum(rate(container_cpu_usage_seconds_total{namespace=\"" + escape(namespace)
+                + "\",pod=~\"" + podRegex(podNames) + "\",container!=\"\",image!=\"\"}[5m]))";
+    }
+
+    public static String cpuLimitQuery(String namespace, List<String> podNames) {
+        return "sum(kube_pod_container_resource_limits{namespace=\"" + escape(namespace)
+                + "\",pod=~\"" + podRegex(podNames) + "\",resource=\"cpu\",unit=\"core\"})";
+    }
+
+    public static String cpuThrottlingQuery(String namespace, List<String> podNames) {
+        return "sum(rate(container_cpu_cfs_throttled_seconds_total{namespace=\"" + escape(namespace)
+                + "\",pod=~\"" + podRegex(podNames) + "\",container!=\"\",image!=\"\"}[5m]))";
     }
 
     static URI buildInstantQueryUri(String baseUrl, String query) {
