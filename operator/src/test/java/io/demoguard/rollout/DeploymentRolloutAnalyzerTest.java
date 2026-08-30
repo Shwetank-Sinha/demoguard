@@ -23,6 +23,22 @@ class DeploymentRolloutAnalyzerTest {
     }
 
     @Test
+    void classifiesFullyCaughtUpDeploymentWithAbsentUnavailableReplicasAsStable() {
+        Deployment deployment = new DeploymentBuilder()
+                .withNewMetadata().withName("app").withGeneration(2L).endMetadata()
+                .withNewSpec().withReplicas(3).endSpec()
+                .withNewStatus()
+                    .withObservedGeneration(2L)
+                    .withUpdatedReplicas(3)
+                    .withReadyReplicas(3)
+                    .withAvailableReplicas(3)
+                .endStatus()
+                .build();
+
+        assertEquals(RolloutStatus.STABLE, analyzer.analyze(deployment).rolloutStatus());
+    }
+
+    @Test
     void classifiesInsufficientUpdatedReplicasAsRollingOut() {
         var report = analyzer.analyze(deployment(7L, 7L, 3, 2, 3, 3, 0));
 

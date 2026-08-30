@@ -20,7 +20,8 @@ public final class DeploymentRolloutAnalyzer {
         Integer updated = status == null ? null : status.getUpdatedReplicas();
         Integer available = status == null ? null : status.getAvailableReplicas();
         Integer ready = status == null ? null : status.getReadyReplicas();
-        Integer unavailable = status == null ? null : status.getUnavailableReplicas();
+        int unavailable = status == null || status.getUnavailableReplicas() == null
+                ? 0 : status.getUnavailableReplicas();
         List<DeploymentCondition> conditions = status == null || status.getConditions() == null
                 ? List.of() : status.getConditions();
 
@@ -32,7 +33,7 @@ public final class DeploymentRolloutAnalyzer {
         }
 
         if (generation == null || observed == null || desired == null || updated == null
-                || available == null || ready == null || unavailable == null) {
+                || available == null || ready == null) {
             return report(RolloutStatus.UNKNOWN, generation, observed, updated,
                     "Deployment rollout state is unknown because required generation or replica status is absent", null);
         }
