@@ -39,6 +39,9 @@ public class DemoReadinessStatus {
     private Long observedGeneration;
     private int updatedReplicas;
     private String rolloutMessage = "Deployment rollout has not been evaluated";
+    private ReadinessStatus preflightStatus;
+    private String preflightSummary;
+    private List<PreflightCheck> preflightChecks = new ArrayList<>();
 
     public ReadinessStatus getReadinessStatus() {
         return readinessStatus;
@@ -135,4 +138,10 @@ public class DemoReadinessStatus {
     public void setUpdatedReplicas(int updatedReplicas) { this.updatedReplicas = updatedReplicas; }
     public String getRolloutMessage() { return rolloutMessage; }
     public void setRolloutMessage(String rolloutMessage) { this.rolloutMessage = rolloutMessage; }
+    public ReadinessStatus getPreflightStatus() { return preflightStatus; }
+    public void setPreflightStatus(ReadinessStatus preflightStatus) { this.preflightStatus = preflightStatus; }
+    public String getPreflightSummary() { return preflightSummary; }
+    public void setPreflightSummary(String preflightSummary) { this.preflightSummary = preflightSummary; }
+    public List<PreflightCheck> getPreflightChecks() { return preflightChecks; }
+    public void setPreflightChecks(List<PreflightCheck> preflightChecks) { this.preflightChecks = preflightChecks; }
 }

@@ -59,6 +59,10 @@ class CustomResourceModelTest {
         status.setObservedGeneration(8L);
         status.setUpdatedReplicas(2);
         status.setRolloutMessage("generation has not been observed");
+        status.setPreflightStatus(ReadinessStatus.WARNING);
+        status.setPreflightSummary("RUNTIME: one replica is unavailable");
+        status.setPreflightChecks(List.of(new PreflightCheck(PreflightCheck.Category.RUNTIME,
+                PreflightCheck.Status.WARNING, "one replica is unavailable", "Inspect the pod")));
 
         DemoReadiness readiness = new DemoReadiness();
         readiness.setStatus(status);
@@ -94,5 +98,9 @@ class CustomResourceModelTest {
         assertEquals(8L, readiness.getStatus().getObservedGeneration());
         assertEquals(2, readiness.getStatus().getUpdatedReplicas());
         assertEquals("generation has not been observed", readiness.getStatus().getRolloutMessage());
+        assertEquals(ReadinessStatus.WARNING, readiness.getStatus().getPreflightStatus());
+        assertEquals("RUNTIME: one replica is unavailable", readiness.getStatus().getPreflightSummary());
+        assertEquals(PreflightCheck.Category.RUNTIME,
+                readiness.getStatus().getPreflightChecks().getFirst().getCategory());
     }
 }

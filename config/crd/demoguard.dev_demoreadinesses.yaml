@@ -18,6 +18,9 @@ spec:
         - name: Status
           type: string
           jsonPath: .status.readinessStatus
+        - name: Preflight
+          type: string
+          jsonPath: .status.preflightSummary
         - name: Score
           type: integer
           jsonPath: .status.score
@@ -66,6 +69,9 @@ spec:
                 - rolloutStatus
                 - updatedReplicas
                 - rolloutMessage
+                - preflightStatus
+                - preflightSummary
+                - preflightChecks
               properties:
                 readinessStatus:
                   type: string
@@ -195,3 +201,27 @@ spec:
                   minimum: 0
                 rolloutMessage:
                   type: string
+                preflightStatus:
+                  type: string
+                  enum: [READY, WARNING, BLOCKED]
+                preflightSummary:
+                  type: string
+                preflightChecks:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - category
+                      - status
+                      - message
+                    properties:
+                      category:
+                        type: string
+                        enum: [STATIC, RUNTIME, MEMORY, CPU, ROLLOUT, REMEDIATION]
+                      status:
+                        type: string
+                        enum: [PASS, WARNING, BLOCKED, UNKNOWN, NOT_REQUIRED]
+                      message:
+                        type: string
+                      recommendation:
+                        type: string

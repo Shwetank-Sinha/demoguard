@@ -38,6 +38,8 @@ A rolling rollout applies a 20-point warning penalty (with the shared warning fl
 
 The final score always matches `readinessStatus`: `READY` is exactly 100, `WARNING` is 60–99, and `BLOCKED` is below 60. `scoreMessage` starts with the static-validation base score and lists each runtime or forecast adjustment that affected the final score.
 
+Every result also includes a concise demo preflight report. `preflightStatus` exactly matches the final `readinessStatus`, while `preflightSummary` identifies the first blocking or warning reason (or confirms that the workload is ready for the configured demo window). `preflightChecks` always appears in `STATIC`, `RUNTIME`, `MEMORY`, `CPU`, `ROLLOUT`, `REMEDIATION` order. Each check is `PASS`, `WARNING`, `BLOCKED`, `UNKNOWN`, or `NOT_REQUIRED`; unavailable Prometheus forecasts remain `UNKNOWN` and do not block an otherwise healthy workload. Remediation checks report only the plan count and ask the team to review the plans—patch YAML remains in `remediationPlans`.
+
 Static configuration failures also appear in `status.remediationPlans` as deterministic, deduplicated review items. Each item identifies its target and severity, explains the change, and says whether DemoGuard could infer a safe patch. DemoGuard emits strategic-merge YAML for replicas below the policy minimum, a complete PDB manifest when the Deployment selector is safely reusable, and a PDB patch when `minAvailable` is below the policy minimum. `remediationSummary` reports patch and team-decision counts without copying multiline patches into findings or `scoreMessage`.
 
 Probe endpoints and CPU or memory quantities are application decisions, so their plans use `safeToApply: false` and `patchFormat: NONE`. DemoGuard never applies remediation plans or changes the target Deployment or PDB; operators must review any emitted YAML before applying it.
@@ -49,7 +51,7 @@ kubectl apply -f demo-workloads/unsafe-deployment.yaml
 kubectl apply -f demo-workloads/unsafe-policy.yaml
 ```
 
-View the generated readiness result (the CRD also prints runtime health, rollout state, CPU risk, and Ready replicas):
+View the generated readiness result (the CRD also prints the preflight summary, runtime health, rollout state, CPU risk, and Ready replicas):
 
 ```bash
 kubectl get demoreadiness

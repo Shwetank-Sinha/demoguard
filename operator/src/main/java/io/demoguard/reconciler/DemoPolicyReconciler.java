@@ -102,8 +102,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
                 .get();
 
         DemoReadinessStatus status;
+        ReadinessStatus staticStatus;
         if (deployment == null) {
             status = missingDeploymentStatus(spec);
+            staticStatus = ReadinessStatus.BLOCKED;
         } else {
             Optional<PodDisruptionBudget> pdb = findMatchingPdb(deployment,
                     client.policy().v1().podDisruptionBudget()
@@ -111,6 +113,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             int minimumReplicas = spec.getMinimumReplicas() == null
                     ? DemoPolicySpec.DEFAULT_MINIMUM_REPLICAS : spec.getMinimumReplicas();
             status = statusFrom(validator.validate(deployment, pdb, minimumReplicas));
+            staticStatus = status.getReadinessStatus();
             List<RemediationPlan> remediationPlans =
                     new RemediationPlanner(validator).plansFor(deployment, pdb, minimumReplicas);
             status.setRemediationPlans(remediationPlans);
@@ -122,6 +125,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             addMemoryForecast(spec, status, podNames);
             addCpuForecast(spec, status, podNames);
         }
+
+        PreflightReportBuilder.populate(status, staticStatus);
 
         upsertReadiness(policy.getMetadata().getName(), policyNamespace, status);
         return UpdateControl.noUpdate();
