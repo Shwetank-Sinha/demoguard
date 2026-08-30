@@ -5,6 +5,7 @@ import io.demoguard.api.DemoPolicySpec;
 import io.demoguard.api.DemoReadiness;
 import io.demoguard.api.DemoReadinessStatus;
 import io.demoguard.api.ReadinessStatus;
+import io.demoguard.api.RolloutStatus;
 import io.demoguard.prediction.MemoryForecaster;
 import io.demoguard.prediction.CpuForecaster;
 import io.demoguard.prediction.CpuForecaster.CpuRisk;
@@ -13,6 +14,8 @@ import io.demoguard.prediction.MemoryForecaster.MemoryRisk;
 import io.demoguard.prometheus.PrometheusClient;
 import io.demoguard.runtime.RuntimeHealthReport;
 import io.demoguard.runtime.RuntimeHealthValidator;
+import io.demoguard.rollout.DeploymentRolloutAnalyzer;
+import io.demoguard.rollout.RolloutReport;
 import io.demoguard.validation.DeploymentValidator;
 import io.demoguard.validation.ReadinessReport;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -46,32 +49,43 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     private final MemoryForecaster forecaster;
     private final CpuForecaster cpuForecaster;
     private final RuntimeHealthValidator runtimeValidator;
+    private final DeploymentRolloutAnalyzer rolloutAnalyzer;
 
     public DemoPolicyReconciler(KubernetesClient client) {
         this(client, new DeploymentValidator(), new PrometheusClient(), new MemoryForecaster(), new CpuForecaster(),
-                new RuntimeHealthValidator());
+                new RuntimeHealthValidator(), new DeploymentRolloutAnalyzer());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator) {
         this(client, validator, new PrometheusClient(), new MemoryForecaster(), new CpuForecaster(),
-                new RuntimeHealthValidator());
+                new RuntimeHealthValidator(), new DeploymentRolloutAnalyzer());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
                          PrometheusClient prometheus, MemoryForecaster forecaster) {
-        this(client, validator, prometheus, forecaster, new CpuForecaster(), new RuntimeHealthValidator());
+        this(client, validator, prometheus, forecaster, new CpuForecaster(), new RuntimeHealthValidator(),
+                new DeploymentRolloutAnalyzer());
     }
 
     DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
                          PrometheusClient prometheus, MemoryForecaster forecaster,
                          CpuForecaster cpuForecaster,
                          RuntimeHealthValidator runtimeValidator) {
+        this(client, validator, prometheus, forecaster, cpuForecaster, runtimeValidator,
+                new DeploymentRolloutAnalyzer());
+    }
+
+    DemoPolicyReconciler(KubernetesClient client, DeploymentValidator validator,
+                         PrometheusClient prometheus, MemoryForecaster forecaster,
+                         CpuForecaster cpuForecaster, RuntimeHealthValidator runtimeValidator,
+                         DeploymentRolloutAnalyzer rolloutAnalyzer) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.validator = Objects.requireNonNull(validator, "validator must not be null");
         this.prometheus = Objects.requireNonNull(prometheus, "prometheus must not be null");
         this.forecaster = Objects.requireNonNull(forecaster, "forecaster must not be null");
         this.cpuForecaster = Objects.requireNonNull(cpuForecaster, "cpuForecaster must not be null");
         this.runtimeValidator = Objects.requireNonNull(runtimeValidator, "runtimeValidator must not be null");
+        this.rolloutAnalyzer = Objects.requireNonNull(rolloutAnalyzer, "rolloutAnalyzer must not be null");
     }
 
     @Override
@@ -96,6 +110,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             status = statusFrom(validator.validate(deployment, pdb, minimumReplicas));
             List<Pod> pods = targetPods(deployment, spec.getTargetNamespace());
             mergeRuntime(status, runtimeValidator.validate(deployment, pods, minimumReplicas));
+            mergeRollout(status, rolloutAnalyzer.analyze(deployment));
             List<String> podNames = pods.stream().map(pod -> pod.getMetadata().getName()).toList();
             addMemoryForecast(spec, status, podNames);
             addCpuForecast(spec, status, podNames);
@@ -169,6 +184,30 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         } else if (runtime.runtimeStatus() == io.demoguard.api.RuntimeStatus.DEGRADED
                 && status.getReadinessStatus() != ReadinessStatus.BLOCKED) {
             applyWarningPenalty(status, "runtime DEGRADED");
+        }
+    }
+
+    static void mergeRollout(DemoReadinessStatus status, RolloutReport rollout) {
+        status.setRolloutStatus(rollout.rolloutStatus());
+        status.setDeploymentGeneration(rollout.deploymentGeneration());
+        status.setObservedGeneration(rollout.observedGeneration());
+        status.setUpdatedReplicas(rollout.updatedReplicas());
+        status.setRolloutMessage(rollout.rolloutMessage());
+
+        if (rollout.rolloutStatus() == RolloutStatus.STALLED) {
+            status.setFindings(append(status.getFindings(), List.of(rollout.rolloutMessage())));
+            status.setRecommendations(append(status.getRecommendations(),
+                    List.of("Rollback or fix the stalled Deployment before starting the demo")));
+            status.setScore(Math.min(status.getScore(), BLOCKED_SCORE_CAP));
+            status.setReadinessStatus(ReadinessStatus.BLOCKED);
+            appendScoreMessage(status, "rollout STALLED capped score at " + BLOCKED_SCORE_CAP);
+        } else if (rollout.rolloutStatus() == RolloutStatus.ROLLING_OUT) {
+            status.setFindings(append(status.getFindings(), List.of(rollout.rolloutMessage())));
+            status.setRecommendations(append(status.getRecommendations(),
+                    List.of("Wait for the rollout to complete before presenting")));
+            if (status.getReadinessStatus() != ReadinessStatus.BLOCKED) {
+                applyWarningPenalty(status, "rollout ROLLING_OUT");
+            }
         }
     }
 
@@ -318,6 +357,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         status.setCpuPredictionMessage("CPU forecast unavailable because the target Deployment was not found");
         status.setRuntimeStatus(io.demoguard.api.RuntimeStatus.UNHEALTHY);
         status.setRuntimeMessage("Runtime health unavailable because the target Deployment was not found");
+        status.setRolloutStatus(RolloutStatus.UNKNOWN);
+        status.setRolloutMessage("Rollout state unavailable because the target Deployment was not found");
         status.setFindings(List.of("Target Deployment " + spec.getTargetNamespace() + "/"
                 + spec.getTargetDeployment() + " was not found"));
         status.setRecommendations(List.of("Create the target Deployment or correct the DemoPolicy target"));

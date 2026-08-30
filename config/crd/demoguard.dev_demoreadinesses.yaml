@@ -24,6 +24,9 @@ spec:
         - name: Runtime
           type: string
           jsonPath: .status.runtimeStatus
+        - name: Rollout
+          type: string
+          jsonPath: .status.rolloutStatus
         - name: CPU Risk
           type: string
           jsonPath: .status.cpuRisk
@@ -58,6 +61,9 @@ spec:
                 - unavailableReplicas
                 - totalRestarts
                 - runtimeMessage
+                - rolloutStatus
+                - updatedReplicas
+                - rolloutMessage
               properties:
                 readinessStatus:
                   type: string
@@ -135,4 +141,19 @@ spec:
                   format: int32
                   minimum: 0
                 runtimeMessage:
+                  type: string
+                rolloutStatus:
+                  type: string
+                  enum: [STABLE, ROLLING_OUT, STALLED, UNKNOWN]
+                deploymentGeneration:
+                  type: integer
+                  format: int64
+                observedGeneration:
+                  type: integer
+                  format: int64
+                updatedReplicas:
+                  type: integer
+                  format: int32
+                  minimum: 0
+                rolloutMessage:
                   type: string

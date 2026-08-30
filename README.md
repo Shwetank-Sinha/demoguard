@@ -1,6 +1,6 @@
 # DemoGuard
 
-DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. It combines static Deployment and PodDisruptionBudget checks, live Deployment and pod health, and low-confidence Prometheus memory and CPU-risk forecasts for the planned demo window.
+DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. It combines static Deployment and PodDisruptionBudget checks, live Deployment and pod health, Deployment rollout safety, and low-confidence Prometheus memory and CPU-risk forecasts for the planned demo window.
 
 The operator uses the current kubeconfig and active Kubernetes context when run locally. It watches `DemoPolicy` resources and writes the validation result to a same-namespace `DemoReadiness` resource.
 
@@ -32,6 +32,10 @@ For runtime validation, DemoGuard reads the Deployment's desired, Ready, availab
 
 `runtimeStatus` is `HEALTHY`, `DEGRADED`, or `UNHEALTHY`. Zero Ready or available replicas, failed pods, and active fatal container waiting states block the demo. Replica counts below `spec.minimumReplicas` and restarts without an active crash loop produce a warning. `DEGRADED` applies a 20-point penalty with a floor of 60; `UNHEALTHY` caps the score at 40. Static or runtime `BLOCKED` results always remain blocked, while memory or CPU risk can promote a non-blocked result to `WARNING` but cannot weaken a block.
 
+For deployment-change protection, DemoGuard compares `metadata.generation` with `status.observedGeneration`, checks desired, updated, Ready, available, and unavailable replicas, and inspects Deployment conditions. `rolloutStatus` is `STABLE` when the latest generation is fully observed and all desired replicas are updated, Ready, and available; `ROLLING_OUT` while those values are catching up; `STALLED` when Kubernetes reports failed progress, including `ProgressDeadlineExceeded` or `ReplicaFailure`; and `UNKNOWN` when required status data is absent. Condition reasons are retained in `rolloutMessage`.
+
+A rolling rollout applies a 20-point warning penalty (with the shared warning floor of 60) and recommends waiting before presenting. A stalled rollout always makes final readiness `BLOCKED`, caps the score at 40, and recommends rollback or repair. A stable rollout does not alter readiness or score. Existing static, runtime, memory, and CPU risks keep their precedence: warning deductions accumulate, and no warning can weaken a blocked result.
+
 The final score always matches `readinessStatus`: `READY` is exactly 100, `WARNING` is 60–99, and `BLOCKED` is below 60. `scoreMessage` starts with the static-validation base score and lists each runtime or forecast adjustment that affected the final score.
 
 Apply the deliberately unsafe Deployment and its policy:
@@ -41,7 +45,7 @@ kubectl apply -f demo-workloads/unsafe-deployment.yaml
 kubectl apply -f demo-workloads/unsafe-policy.yaml
 ```
 
-View the generated readiness result (the CRD also prints runtime health, CPU risk, and Ready replicas):
+View the generated readiness result (the CRD also prints runtime health, rollout state, CPU risk, and Ready replicas):
 
 ```bash
 kubectl get demoreadiness

@@ -32,6 +32,11 @@ public class DemoReadinessStatus {
     private int unavailableReplicas;
     private int totalRestarts;
     private String runtimeMessage;
+    private RolloutStatus rolloutStatus = RolloutStatus.UNKNOWN;
+    private Long deploymentGeneration;
+    private Long observedGeneration;
+    private int updatedReplicas;
+    private String rolloutMessage = "Deployment rollout has not been evaluated";
 
     public ReadinessStatus getReadinessStatus() {
         return readinessStatus;
@@ -111,4 +116,14 @@ public class DemoReadinessStatus {
     public void setTotalRestarts(int totalRestarts) { this.totalRestarts = totalRestarts; }
     public String getRuntimeMessage() { return runtimeMessage; }
     public void setRuntimeMessage(String runtimeMessage) { this.runtimeMessage = runtimeMessage; }
+    public RolloutStatus getRolloutStatus() { return rolloutStatus; }
+    public void setRolloutStatus(RolloutStatus rolloutStatus) { this.rolloutStatus = rolloutStatus; }
+    public Long getDeploymentGeneration() { return deploymentGeneration; }
+    public void setDeploymentGeneration(Long deploymentGeneration) { this.deploymentGeneration = deploymentGeneration; }
+    public Long getObservedGeneration() { return observedGeneration; }
+    public void setObservedGeneration(Long observedGeneration) { this.observedGeneration = observedGeneration; }
+    public int getUpdatedReplicas() { return updatedReplicas; }
+    public void setUpdatedReplicas(int updatedReplicas) { this.updatedReplicas = updatedReplicas; }
+    public String getRolloutMessage() { return rolloutMessage; }
+    public void setRolloutMessage(String rolloutMessage) { this.rolloutMessage = rolloutMessage; }
 }

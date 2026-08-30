@@ -49,6 +49,11 @@ class CustomResourceModelTest {
         status.setUnavailableReplicas(1);
         status.setTotalRestarts(4);
         status.setRuntimeMessage("one replica is unavailable");
+        status.setRolloutStatus(RolloutStatus.ROLLING_OUT);
+        status.setDeploymentGeneration(9L);
+        status.setObservedGeneration(8L);
+        status.setUpdatedReplicas(2);
+        status.setRolloutMessage("generation has not been observed");
 
         DemoReadiness readiness = new DemoReadiness();
         readiness.setStatus(status);
@@ -77,5 +82,10 @@ class CustomResourceModelTest {
         assertEquals(1, readiness.getStatus().getUnavailableReplicas());
         assertEquals(4, readiness.getStatus().getTotalRestarts());
         assertEquals("one replica is unavailable", readiness.getStatus().getRuntimeMessage());
+        assertEquals(RolloutStatus.ROLLING_OUT, readiness.getStatus().getRolloutStatus());
+        assertEquals(9L, readiness.getStatus().getDeploymentGeneration());
+        assertEquals(8L, readiness.getStatus().getObservedGeneration());
+        assertEquals(2, readiness.getStatus().getUpdatedReplicas());
+        assertEquals("generation has not been observed", readiness.getStatus().getRolloutMessage());
     }
 }
