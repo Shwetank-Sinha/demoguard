@@ -44,9 +44,14 @@ public final class DeploymentValidator {
         passed += record(allApplicationContainersHaveResourceRequirements(deployment),
                 "One or more application containers lack CPU or memory requests or limits",
                 "Set CPU and memory requests and limits for every application container", findings, recommendations);
-        passed += record(hasMatchingPodDisruptionBudget(deployment, podDisruptionBudget),
-                "No matching PodDisruptionBudget exists",
-                "Create a PodDisruptionBudget whose selector matches the deployment pods", findings, recommendations);
+        boolean matchingPdb = hasMatchingPodDisruptionBudget(deployment, podDisruptionBudget);
+        boolean adequatePdb = matchingPdb && hasAdequatePdbMinAvailable(podDisruptionBudget.orElseThrow(), minimumReplicas);
+        passed += record(adequatePdb,
+                matchingPdb ? "Matching PodDisruptionBudget minAvailable is below the policy minimum of "
+                        + minimumReplicas : "No matching PodDisruptionBudget exists",
+                matchingPdb ? "Set PodDisruptionBudget spec.minAvailable to at least " + minimumReplicas
+                        : "Create a PodDisruptionBudget whose selector matches the deployment pods",
+                findings, recommendations);
 
         return new ReadinessReport(passed, CHECK_COUNT, findings, recommendations);
     }
@@ -99,6 +104,26 @@ public final class DeploymentValidator {
         return matchLabels != null && !matchLabels.isEmpty()
                 && matchLabels.entrySet().stream()
                 .allMatch(entry -> Objects.equals(podLabels.get(entry.getKey()), entry.getValue()));
+    }
+
+    public boolean hasAdequatePdbMinAvailable(PodDisruptionBudget pdb, int minimumReplicas) {
+        if (pdb.getSpec() == null || pdb.getSpec().getMinAvailable() == null) {
+            return true;
+        }
+        IntOrString value = pdb.getSpec().getMinAvailable();
+        if (value.getIntVal() != null) {
+            return value.getIntVal() >= minimumReplicas;
+        }
+        String text = value.getStrVal();
+        if (text == null || !text.endsWith("%")) {
+            return false;
+        }
+        try {
+            double percentage = Double.parseDouble(text.substring(0, text.length() - 1));
+            return Math.ceil(minimumReplicas * percentage / 100.0) >= minimumReplicas;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private List<Container> containers(Deployment deployment) {

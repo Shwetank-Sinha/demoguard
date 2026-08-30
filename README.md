@@ -38,6 +38,10 @@ A rolling rollout applies a 20-point warning penalty (with the shared warning fl
 
 The final score always matches `readinessStatus`: `READY` is exactly 100, `WARNING` is 60–99, and `BLOCKED` is below 60. `scoreMessage` starts with the static-validation base score and lists each runtime or forecast adjustment that affected the final score.
 
+Static configuration failures also appear in `status.remediationPlans` as deterministic, deduplicated review items. Each item identifies its target and severity, explains the change, and says whether DemoGuard could infer a safe patch. DemoGuard emits strategic-merge YAML for replicas below the policy minimum, a complete PDB manifest when the Deployment selector is safely reusable, and a PDB patch when `minAvailable` is below the policy minimum. `remediationSummary` reports patch and team-decision counts without copying multiline patches into findings or `scoreMessage`.
+
+Probe endpoints and CPU or memory quantities are application decisions, so their plans use `safeToApply: false` and `patchFormat: NONE`. DemoGuard never applies remediation plans or changes the target Deployment or PDB; operators must review any emitted YAML before applying it.
+
 Apply the deliberately unsafe Deployment and its policy:
 
 ```bash

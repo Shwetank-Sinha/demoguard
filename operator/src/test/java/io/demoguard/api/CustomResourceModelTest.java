@@ -30,6 +30,11 @@ class CustomResourceModelTest {
         status.setScore(80);
         status.setFindings(List.of("finding"));
         status.setRecommendations(List.of("recommendation"));
+        RemediationPlan remediation = new RemediationPlan("replicas", RemediationPlan.Severity.BLOCKING,
+                "Deployment", "demo", "Raise replicas", "Policy minimum", true,
+                RemediationPlan.PatchFormat.YAML, "spec:\n  replicas: 2\n");
+        status.setRemediationSummary("1 static remediation plan(s)");
+        status.setRemediationPlans(List.of(remediation));
         status.setMemoryRisk(MemoryRisk.SAFE);
         status.setCurrentMemoryBytes(100L);
         status.setMemoryLimitBytes(200L);
@@ -63,6 +68,8 @@ class CustomResourceModelTest {
         assertEquals(80, readiness.getStatus().getScore());
         assertEquals(List.of("finding"), readiness.getStatus().getFindings());
         assertEquals(List.of("recommendation"), readiness.getStatus().getRecommendations());
+        assertEquals("1 static remediation plan(s)", readiness.getStatus().getRemediationSummary());
+        assertEquals("replicas", readiness.getStatus().getRemediationPlans().getFirst().getId());
         assertEquals(MemoryRisk.SAFE, readiness.getStatus().getMemoryRisk());
         assertEquals(100L, readiness.getStatus().getCurrentMemoryBytes());
         assertEquals(200L, readiness.getStatus().getMemoryLimitBytes());

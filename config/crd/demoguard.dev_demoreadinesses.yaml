@@ -50,6 +50,8 @@ spec:
                 - scoreMessage
                 - findings
                 - recommendations
+                - remediationSummary
+                - remediationPlans
                 - memoryRisk
                 - predictionMessage
                 - cpuRisk
@@ -83,6 +85,42 @@ spec:
                   type: array
                   items:
                     type: string
+                remediationSummary:
+                  type: string
+                remediationPlans:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - id
+                      - severity
+                      - targetKind
+                      - targetName
+                      - summary
+                      - rationale
+                      - safeToApply
+                      - patchFormat
+                    properties:
+                      id:
+                        type: string
+                      severity:
+                        type: string
+                        enum: [BLOCKING, WARNING]
+                      targetKind:
+                        type: string
+                      targetName:
+                        type: string
+                      summary:
+                        type: string
+                      rationale:
+                        type: string
+                      safeToApply:
+                        type: boolean
+                      patchFormat:
+                        type: string
+                        enum: [YAML, JSON_PATCH, NONE]
+                      patch:
+                        type: string
                 memoryRisk:
                   type: string
                   enum: [SAFE, AT_RISK, UNKNOWN]

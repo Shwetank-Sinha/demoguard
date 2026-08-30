@@ -44,6 +44,8 @@ class DemoPolicyReconcilerTest {
         assertEquals("Static validation score: 60/100", status.getScoreMessage());
         assertEquals(List.of("finding"), status.getFindings());
         assertEquals(List.of("fix"), status.getRecommendations());
+        assertEquals("No static remediation is required", status.getRemediationSummary());
+        assertTrue(status.getRemediationPlans().isEmpty());
     }
 
     @Test

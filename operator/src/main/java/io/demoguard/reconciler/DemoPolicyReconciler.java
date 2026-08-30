@@ -5,6 +5,7 @@ import io.demoguard.api.DemoPolicySpec;
 import io.demoguard.api.DemoReadiness;
 import io.demoguard.api.DemoReadinessStatus;
 import io.demoguard.api.ReadinessStatus;
+import io.demoguard.api.RemediationPlan;
 import io.demoguard.api.RolloutStatus;
 import io.demoguard.prediction.MemoryForecaster;
 import io.demoguard.prediction.CpuForecaster;
@@ -18,6 +19,7 @@ import io.demoguard.rollout.DeploymentRolloutAnalyzer;
 import io.demoguard.rollout.RolloutReport;
 import io.demoguard.validation.DeploymentValidator;
 import io.demoguard.validation.ReadinessReport;
+import io.demoguard.validation.RemediationPlanner;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
@@ -31,6 +33,7 @@ import io.javaoperatorsdk.operator.api.reconciler.UpdateControl;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -108,6 +111,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             int minimumReplicas = spec.getMinimumReplicas() == null
                     ? DemoPolicySpec.DEFAULT_MINIMUM_REPLICAS : spec.getMinimumReplicas();
             status = statusFrom(validator.validate(deployment, pdb, minimumReplicas));
+            List<RemediationPlan> remediationPlans =
+                    new RemediationPlanner(validator).plansFor(deployment, pdb, minimumReplicas);
+            status.setRemediationPlans(remediationPlans);
+            status.setRemediationSummary(RemediationPlanner.summary(remediationPlans));
             List<Pod> pods = targetPods(deployment, spec.getTargetNamespace());
             mergeRuntime(status, runtimeValidator.validate(deployment, pods, minimumReplicas));
             mergeRollout(status, rolloutAnalyzer.analyze(deployment));
@@ -140,6 +147,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         }
         return budgets.stream()
                 .filter(pdb -> validator.hasMatchingPodDisruptionBudget(deployment, Optional.of(pdb)))
+                .sorted(Comparator.comparing(pdb -> pdb.getMetadata().getName()))
                 .findFirst();
     }
 

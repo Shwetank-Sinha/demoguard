@@ -123,6 +123,18 @@ class DeploymentValidatorTest {
                 Optional.of(pdb("demo", Map.of()))));
     }
 
+    @Test
+    void pdbRuleRejectsMinAvailableBelowPolicyMinimum() {
+        PodDisruptionBudget low = new PodDisruptionBudgetBuilder(matchingPdb()).editSpec()
+                .withMinAvailable(new IntOrString(1)).endSpec().build();
+        PodDisruptionBudget adequate = new PodDisruptionBudgetBuilder(matchingPdb()).editSpec()
+                .withMinAvailable(new IntOrString(2)).endSpec().build();
+
+        assertFalse(validator.hasAdequatePdbMinAvailable(low, 2));
+        assertTrue(validator.hasAdequatePdbMinAvailable(adequate, 2));
+        assertEquals(80, validator.validate(safeDeployment(), Optional.of(low), 2).getScore());
+    }
+
     private Deployment safeDeployment() {
         return new DeploymentBuilder()
                 .withNewMetadata().withName("demo").withNamespace("demo").endMetadata()

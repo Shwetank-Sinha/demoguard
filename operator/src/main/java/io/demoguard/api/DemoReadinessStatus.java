@@ -13,6 +13,8 @@ public class DemoReadinessStatus {
     private String scoreMessage;
     private List<String> findings = new ArrayList<>();
     private List<String> recommendations = new ArrayList<>();
+    private String remediationSummary = "No static remediation is required";
+    private List<RemediationPlan> remediationPlans = new ArrayList<>();
     private MemoryRisk memoryRisk = MemoryRisk.UNKNOWN;
     private Long currentMemoryBytes;
     private Long memoryLimitBytes;
@@ -76,6 +78,13 @@ public class DemoReadinessStatus {
 
     public void setRecommendations(List<String> recommendations) {
         this.recommendations = recommendations;
+    }
+
+    public String getRemediationSummary() { return remediationSummary; }
+    public void setRemediationSummary(String remediationSummary) { this.remediationSummary = remediationSummary; }
+    public List<RemediationPlan> getRemediationPlans() { return remediationPlans; }
+    public void setRemediationPlans(List<RemediationPlan> remediationPlans) {
+        this.remediationPlans = remediationPlans;
     }
 
     public MemoryRisk getMemoryRisk() { return memoryRisk; }
