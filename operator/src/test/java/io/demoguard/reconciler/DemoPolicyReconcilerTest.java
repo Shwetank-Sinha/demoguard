@@ -39,6 +39,7 @@ class DemoPolicyReconcilerTest {
         assertEquals("launch-readiness", DemoPolicyReconciler.readinessName("launch"));
         assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
         assertEquals(60, status.getScore());
+        assertEquals("Static validation score: 60/100", status.getScoreMessage());
         assertEquals(List.of("finding"), status.getFindings());
         assertEquals(List.of("fix"), status.getRecommendations());
     }
@@ -70,7 +71,23 @@ class DemoPolicyReconcilerTest {
         DemoPolicyReconciler.mergeRuntime(status, runtime);
 
         assertEquals(ReadinessStatus.BLOCKED, status.getReadinessStatus());
+        assertEquals(40, status.getScore());
         assertEquals(List.of("static failure", "runtime finding"), status.getFindings());
+        assertFalse(status.getScoreMessage().contains("runtime DEGRADED"));
+    }
+
+    @Test
+    void degradedRuntimePenalizesStaticReadyIntoWarningRange() {
+        DemoReadinessStatus status = DemoPolicyReconciler.statusFrom(
+                new ReadinessReport(5, 5, List.of(), List.of()));
+        RuntimeHealthReport runtime = new RuntimeHealthReport(RuntimeStatus.DEGRADED,
+                2, 2, 2, 0, 1, "one restart", List.of("restart"), List.of("inspect"));
+
+        DemoPolicyReconciler.mergeRuntime(status, runtime);
+
+        assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
+        assertEquals(80, status.getScore());
+        assertTrue(status.getScoreMessage().contains("runtime DEGRADED: -20"));
     }
 
     @Test
@@ -85,7 +102,21 @@ class DemoPolicyReconcilerTest {
         DemoPolicyReconciler.applyMemoryRiskWarning(status);
 
         assertEquals(ReadinessStatus.BLOCKED, status.getReadinessStatus());
+        assertEquals(40, status.getScore());
         assertEquals(RuntimeStatus.UNHEALTHY, status.getRuntimeStatus());
+        assertTrue(status.getScoreMessage().contains("runtime UNHEALTHY capped score at 40"));
+    }
+
+    @Test
+    void memoryRiskPenalizesStaticReadyIntoWarningRange() {
+        DemoReadinessStatus status = DemoPolicyReconciler.statusFrom(
+                new ReadinessReport(5, 5, List.of(), List.of()));
+
+        DemoPolicyReconciler.applyMemoryRiskWarning(status);
+
+        assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
+        assertEquals(80, status.getScore());
+        assertTrue(status.getScoreMessage().contains("memoryRisk AT_RISK: -20"));
     }
 
     @Test
@@ -96,7 +127,27 @@ class DemoPolicyReconcilerTest {
         DemoPolicyReconciler.applyCpuRiskWarning(status);
 
         assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
+        assertEquals(80, status.getScore());
         assertTrue(status.getFindings().getFirst().contains("CPU"));
+        assertTrue(status.getScoreMessage().contains("cpuRisk AT_RISK: -20"));
+    }
+
+    @Test
+    void warningRisksAccumulateWithoutCrossingBlockedThreshold() {
+        DemoReadinessStatus status = DemoPolicyReconciler.statusFrom(
+                new ReadinessReport(5, 5, List.of(), List.of()));
+        RuntimeHealthReport runtime = new RuntimeHealthReport(RuntimeStatus.DEGRADED,
+                2, 2, 2, 0, 1, "one restart", List.of(), List.of());
+
+        DemoPolicyReconciler.mergeRuntime(status, runtime);
+        DemoPolicyReconciler.applyMemoryRiskWarning(status);
+        DemoPolicyReconciler.applyCpuRiskWarning(status);
+
+        assertEquals(ReadinessStatus.WARNING, status.getReadinessStatus());
+        assertEquals(60, status.getScore());
+        assertTrue(status.getScoreMessage().contains("runtime DEGRADED"));
+        assertTrue(status.getScoreMessage().contains("memoryRisk AT_RISK"));
+        assertTrue(status.getScoreMessage().contains("cpuRisk AT_RISK"));
     }
 
     @Test
@@ -107,7 +158,9 @@ class DemoPolicyReconcilerTest {
         DemoPolicyReconciler.applyCpuRiskWarning(status);
 
         assertEquals(ReadinessStatus.BLOCKED, status.getReadinessStatus());
+        assertEquals(40, status.getScore());
         assertEquals(List.of("static failure"), status.getFindings());
+        assertEquals("Static validation score: 40/100", status.getScoreMessage());
     }
 
     private PodDisruptionBudget pdb(String name, Map<String, String> labels) {

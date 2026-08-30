@@ -44,6 +44,7 @@ spec:
               required:
                 - readinessStatus
                 - score
+                - scoreMessage
                 - findings
                 - recommendations
                 - memoryRisk
@@ -66,6 +67,8 @@ spec:
                   format: int32
                   minimum: 0
                   maximum: 100
+                scoreMessage:
+                  type: string
                 findings:
                   type: array
                   items:

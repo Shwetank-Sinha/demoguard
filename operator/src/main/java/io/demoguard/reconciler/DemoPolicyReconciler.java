@@ -36,6 +36,9 @@ import java.util.Optional;
 public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
 
     private static final String READINESS_SUFFIX = "-readiness";
+    private static final int WARNING_PENALTY = 20;
+    private static final int WARNING_SCORE_FLOOR = 60;
+    private static final int BLOCKED_SCORE_CAP = 40;
 
     private final KubernetesClient client;
     private final DeploymentValidator validator;
@@ -133,6 +136,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         DemoReadinessStatus status = new DemoReadinessStatus();
         status.setReadinessStatus(report.getReadinessStatus());
         status.setScore(report.getScore());
+        status.setScoreMessage("Static validation score: " + report.getScore() + "/100");
         status.setFindings(report.getFindings());
         status.setRecommendations(report.getRecommendations());
         return status;
@@ -159,10 +163,12 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         status.setRecommendations(append(status.getRecommendations(), runtime.recommendations()));
 
         if (runtime.runtimeStatus() == io.demoguard.api.RuntimeStatus.UNHEALTHY) {
+            status.setScore(Math.min(status.getScore(), BLOCKED_SCORE_CAP));
             status.setReadinessStatus(ReadinessStatus.BLOCKED);
+            appendScoreMessage(status, "runtime UNHEALTHY capped score at " + BLOCKED_SCORE_CAP);
         } else if (runtime.runtimeStatus() == io.demoguard.api.RuntimeStatus.DEGRADED
-                && status.getReadinessStatus() == ReadinessStatus.READY) {
-            status.setReadinessStatus(ReadinessStatus.WARNING);
+                && status.getReadinessStatus() != ReadinessStatus.BLOCKED) {
+            applyWarningPenalty(status, "runtime DEGRADED");
         }
     }
 
@@ -258,25 +264,37 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     }
 
     static void applyMemoryRiskWarning(DemoReadinessStatus status) {
-        if (status.getReadinessStatus() == ReadinessStatus.READY) {
-                status.setReadinessStatus(ReadinessStatus.WARNING);
-                List<String> findings = new ArrayList<>(status.getFindings());
-                findings.add("Memory usage may reach its limit during the declared demo duration");
-                status.setFindings(findings);
-                List<String> recommendations = new ArrayList<>(status.getRecommendations());
-                recommendations.add("Review memory growth and capacity before the demo");
-                status.setRecommendations(recommendations);
+        if (status.getReadinessStatus() != ReadinessStatus.BLOCKED) {
+            applyWarningPenalty(status, "memoryRisk AT_RISK");
+            List<String> findings = new ArrayList<>(status.getFindings());
+            findings.add("Memory usage may reach its limit during the declared demo duration");
+            status.setFindings(findings);
+            List<String> recommendations = new ArrayList<>(status.getRecommendations());
+            recommendations.add("Review memory growth and capacity before the demo");
+            status.setRecommendations(recommendations);
         }
     }
 
     static void applyCpuRiskWarning(DemoReadinessStatus status) {
-        if (status.getReadinessStatus() == ReadinessStatus.READY) {
-            status.setReadinessStatus(ReadinessStatus.WARNING);
+        if (status.getReadinessStatus() != ReadinessStatus.BLOCKED) {
+            applyWarningPenalty(status, "cpuRisk AT_RISK");
             status.setFindings(append(status.getFindings(),
                     List.of("CPU usage or throttling may affect the workload during the demo")));
             status.setRecommendations(append(status.getRecommendations(),
                     List.of("Review CPU demand, limits, and throttling before the demo")));
         }
+    }
+
+    private static void applyWarningPenalty(DemoReadinessStatus status, String reason) {
+        status.setScore(Math.max(WARNING_SCORE_FLOOR, status.getScore() - WARNING_PENALTY));
+        status.setReadinessStatus(ReadinessStatus.WARNING);
+        appendScoreMessage(status, reason + ": -" + WARNING_PENALTY
+                + " points (WARNING floor " + WARNING_SCORE_FLOOR + ")");
+    }
+
+    private static void appendScoreMessage(DemoReadinessStatus status, String reason) {
+        String existing = status.getScoreMessage();
+        status.setScoreMessage(existing == null || existing.isBlank() ? reason : existing + "; " + reason);
     }
 
     private static void unknownMemoryForecast(DemoReadinessStatus status, String message) {
@@ -293,6 +311,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         DemoReadinessStatus status = new DemoReadinessStatus();
         status.setReadinessStatus(ReadinessStatus.BLOCKED);
         status.setScore(0);
+        status.setScoreMessage("Score 0: target Deployment was not found");
         status.setMemoryRisk(MemoryRisk.UNKNOWN);
         status.setPredictionMessage("Memory forecast unavailable because the target Deployment was not found");
         status.setCpuRisk(CpuRisk.UNKNOWN);

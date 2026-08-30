@@ -24,13 +24,15 @@ PROMETHEUS_URL=http://localhost:9090 mvn exec:java
 
 Prometheus must expose cAdvisor's `container_memory_working_set_bytes` and `container_cpu_usage_seconds_total`, plus kube-state-metrics' `kube_pod_container_resource_limits`. DemoGuard uses `query_range` history to project usage through the configured demo window. When available, `container_cpu_cfs_throttled_seconds_total` supplies an additional sustained-throttling signal.
 
-`memoryRisk` and `cpuRisk` are each `SAFE`, `AT_RISK`, or `UNKNOWN`. CPU is at risk when its projection reaches 80% of the CPU limit during the demo window or sustained throttling reaches 10% of the limit. Missing Prometheus metrics or insufficient history produce an honest `UNKNOWN`; they do not change static or runtime-health results. An otherwise `READY` workload with either risk at `AT_RISK` is reported as `WARNING`, never `BLOCKED` solely because of a prediction.
+`memoryRisk` and `cpuRisk` are each `SAFE`, `AT_RISK`, or `UNKNOWN`. CPU is at risk when its projection reaches 80% of the CPU limit during the demo window or sustained throttling reaches 10% of the limit. Missing Prometheus metrics or insufficient history produce an honest `UNKNOWN`; they do not change static or runtime-health results. Each `AT_RISK` forecast applies a 20-point penalty to the static-validation base score, with a floor of 60, so forecast risk produces `WARNING` but never `BLOCKED` by itself.
 
 Memory breach timing is only published in `predictedLimitBreachInMinutes` when the breach falls inside `spec.demoDurationMinutes`. Forecasts beyond that horizon remain `SAFE`, omit the distant breach time, and state that no breach is projected during the demo window.
 
 For runtime validation, DemoGuard reads the Deployment's desired, Ready, available, and unavailable replica counts and inspects pods selected by the Deployment. It reports aggregate container restart counts, pod phases, and active waiting reasons including `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, and `CreateContainerConfigError`.
 
-`runtimeStatus` is `HEALTHY`, `DEGRADED`, or `UNHEALTHY`. Zero Ready or available replicas, failed pods, and active fatal container waiting states block the demo. Replica counts below `spec.minimumReplicas` and restarts without an active crash loop produce a warning. Static or runtime `BLOCKED` results always remain blocked, while memory or CPU risk can promote `READY` to `WARNING` but cannot weaken a block.
+`runtimeStatus` is `HEALTHY`, `DEGRADED`, or `UNHEALTHY`. Zero Ready or available replicas, failed pods, and active fatal container waiting states block the demo. Replica counts below `spec.minimumReplicas` and restarts without an active crash loop produce a warning. `DEGRADED` applies a 20-point penalty with a floor of 60; `UNHEALTHY` caps the score at 40. Static or runtime `BLOCKED` results always remain blocked, while memory or CPU risk can promote a non-blocked result to `WARNING` but cannot weaken a block.
+
+The final score always matches `readinessStatus`: `READY` is exactly 100, `WARNING` is 60–99, and `BLOCKED` is below 60. `scoreMessage` starts with the static-validation base score and lists each runtime or forecast adjustment that affected the final score.
 
 Apply the deliberately unsafe Deployment and its policy:
 

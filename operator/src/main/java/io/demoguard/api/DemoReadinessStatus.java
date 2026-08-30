@@ -10,6 +10,7 @@ public class DemoReadinessStatus {
 
     private ReadinessStatus readinessStatus;
     private int score;
+    private String scoreMessage;
     private List<String> findings = new ArrayList<>();
     private List<String> recommendations = new ArrayList<>();
     private MemoryRisk memoryRisk = MemoryRisk.UNKNOWN;
@@ -46,6 +47,14 @@ public class DemoReadinessStatus {
 
     public void setScore(int score) {
         this.score = score;
+    }
+
+    public String getScoreMessage() {
+        return scoreMessage;
+    }
+
+    public void setScoreMessage(String scoreMessage) {
+        this.scoreMessage = scoreMessage;
     }
 
     public List<String> getFindings() {
