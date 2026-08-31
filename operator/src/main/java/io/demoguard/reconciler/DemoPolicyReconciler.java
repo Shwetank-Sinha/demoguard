@@ -127,6 +127,7 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         }
 
         PreflightReportBuilder.populate(status, staticStatus);
+        markAssessmentComplete(status, Instant.now());
 
         upsertReadiness(policy.getMetadata().getName(), policyNamespace, status);
         return UpdateControl.noUpdate();
@@ -158,6 +159,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
 
     static String readinessName(String policyName) {
         return policyName + READINESS_SUFFIX;
+    }
+
+    static void markAssessmentComplete(DemoReadinessStatus status, Instant completedAt) {
+        status.setLastAssessedAt(completedAt.toString());
     }
 
     static DemoReadinessStatus statusFrom(ReadinessReport report) {

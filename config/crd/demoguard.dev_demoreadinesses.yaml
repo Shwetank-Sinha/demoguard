@@ -48,6 +48,7 @@ spec:
             status:
               type: object
               required:
+                - lastAssessedAt
                 - readinessStatus
                 - score
                 - scoreMessage
@@ -73,6 +74,9 @@ spec:
                 - preflightSummary
                 - preflightChecks
               properties:
+                lastAssessedAt:
+                  type: string
+                  format: date-time
                 readinessStatus:
                   type: string
                   enum: [READY, WARNING, BLOCKED]

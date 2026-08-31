@@ -8,6 +8,7 @@ import java.util.List;
 
 public class DemoReadinessStatus {
 
+    private String lastAssessedAt;
     private ReadinessStatus readinessStatus;
     private int score;
     private String scoreMessage;
@@ -42,6 +43,9 @@ public class DemoReadinessStatus {
     private ReadinessStatus preflightStatus;
     private String preflightSummary;
     private List<PreflightCheck> preflightChecks = new ArrayList<>();
+
+    public String getLastAssessedAt() { return lastAssessedAt; }
+    public void setLastAssessedAt(String lastAssessedAt) { this.lastAssessedAt = lastAssessedAt; }
 
     public ReadinessStatus getReadinessStatus() {
         return readinessStatus;

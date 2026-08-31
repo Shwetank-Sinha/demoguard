@@ -89,3 +89,55 @@ kubectl delete -f demo-workloads/unsafe-deployment.yaml
 cd operator
 mvn test
 ```
+
+## Live dashboard
+
+The `dashboard` module is a Spring Boot backend and React/TypeScript frontend for the real `DemoPolicy` and `DemoReadiness` resources in the connected cluster. The operator remains the source of truth: the dashboard reads its point-in-time results and never queries Prometheus directly.
+
+### Local development
+
+The backend uses Fabric8's standard Kubernetes client configuration. Locally, that means the active context from your kubeconfig (normally `$KUBECONFIG` or `~/.kube/config`). Verify the intended context before starting it:
+
+```bash
+kubectl config current-context
+cd dashboard
+mvn spring-boot:run
+```
+
+In another terminal, start the Vite development server. It proxies `/api` to Spring Boot, preserving the same API paths used by the production build:
+
+```bash
+cd dashboard/frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. To build the frontend and package it into the Spring Boot application so UI and API share one origin:
+
+```bash
+cd dashboard/frontend
+npm run build
+cd ..
+mvn package
+java -jar target/demoguard-dashboard-0.1.0-SNAPSHOT.jar
+```
+
+The production frontend build is read from `dashboard/frontend/dist` and included at the root of the Spring Boot JAR.
+
+### In-cluster authentication and RBAC
+
+In Kubernetes, Fabric8 automatically uses the Pod's mounted ServiceAccount token and in-cluster API endpoint. `config/dashboard/dashboard.yaml` creates the `demoguard-dashboard` ServiceAccount and grants only:
+
+- `get`, `list`, and `watch` on namespaces, `DemoPolicy`, and `DemoReadiness` resources;
+- `patch` on `DemoPolicy` resources, solely for the `demoguard.dev/refresh` reconciliation annotation.
+
+The dashboard has no read or write permission for Secrets and no write permission for Deployments, Pods, PodDisruptionBudgets, or other workloads. Apply the manifests after making a deployable dashboard image available to your cluster and setting the Deployment's `image` value as appropriate:
+
+```bash
+kubectl apply -f config/dashboard/dashboard.yaml
+kubectl port-forward service/demoguard-dashboard 8080:8080 --namespace default
+```
+
+Then open `http://localhost:8080`.
+
+Remediation plans in the dashboard are strictly review/copy only. A Copy patch control appears only when the operator supplies patch content. The dashboard never applies remediation YAML and intentionally provides no Apply control.

@@ -8,6 +8,7 @@ import io.demoguard.prediction.CpuForecaster.CpuRisk;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -26,6 +27,7 @@ class CustomResourceModelTest {
     @Test
     void readinessCarriesRequiredStatusFields() {
         DemoReadinessStatus status = new DemoReadinessStatus();
+        status.setLastAssessedAt("2026-08-31T10:15:30Z");
         status.setReadinessStatus(ReadinessStatus.WARNING);
         status.setScore(80);
         status.setFindings(List.of("finding"));
@@ -68,6 +70,8 @@ class CustomResourceModelTest {
         readiness.setStatus(status);
 
         assertInstanceOf(Namespaced.class, readiness);
+        assertEquals(Instant.parse("2026-08-31T10:15:30Z"),
+                Instant.parse(readiness.getStatus().getLastAssessedAt()));
         assertEquals(ReadinessStatus.WARNING, readiness.getStatus().getReadinessStatus());
         assertEquals(80, readiness.getStatus().getScore());
         assertEquals(List.of("finding"), readiness.getStatus().getFindings());

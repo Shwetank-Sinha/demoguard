@@ -17,12 +17,27 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DemoPolicyReconcilerTest {
+
+    @Test
+    void publishesUtcAssessmentCompletionTimeOnEveryCompletedAssessment() {
+        DemoReadinessStatus status = new DemoReadinessStatus();
+        Instant first = Instant.parse("2026-08-31T10:15:30Z");
+        Instant refreshed = Instant.parse("2026-08-31T10:20:45.123Z");
+
+        DemoPolicyReconciler.markAssessmentComplete(status, first);
+        assertEquals("2026-08-31T10:15:30Z", status.getLastAssessedAt());
+
+        DemoPolicyReconciler.markAssessmentComplete(status, refreshed);
+        assertEquals("2026-08-31T10:20:45.123Z", status.getLastAssessedAt());
+        assertEquals(refreshed, Instant.parse(status.getLastAssessedAt()));
+    }
 
     @Test
     void processesMetadataOnlyPolicyUpdates() {
