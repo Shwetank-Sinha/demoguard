@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demoguard-dashboard
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: demoguard-dashboard
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["demoguard.dev"]
+    resources: ["demopolicies", "demoreadinesses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["demoguard.dev"]
+    resources: ["demopolicies"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: demoguard-dashboard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: demoguard-dashboard
+subjects:
+  - kind: ServiceAccount
+    name: demoguard-dashboard
+    namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demoguard-dashboard
+  namespace: default
+  labels:
+    app.kubernetes.io/name: demoguard-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demoguard-dashboard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demoguard-dashboard
+    spec:
+      serviceAccountName: demoguard-dashboard
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dashboard
+          image: demoguard-dashboard:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demoguard-dashboard
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demoguard-dashboard
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

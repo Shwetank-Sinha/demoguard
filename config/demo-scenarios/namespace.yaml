@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demoguard-demo
+  labels:
+    app.kubernetes.io/part-of: demoguard-demo
+
