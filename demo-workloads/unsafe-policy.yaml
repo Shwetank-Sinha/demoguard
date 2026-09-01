@@ -1,10 +1,10 @@
 apiVersion: demoguard.dev/v1alpha1
 kind: DemoPolicy
 metadata:
-  name: hackathon-app
-  namespace: default
+  name: demoguard-workload
+  namespace: demoguard-demo
 spec:
-  targetNamespace: default
-  targetDeployment: hackathon-app
+  targetNamespace: demoguard-demo
+  targetDeployment: demoguard-workload
   minimumReplicas: 2
   demoDurationMinutes: 30

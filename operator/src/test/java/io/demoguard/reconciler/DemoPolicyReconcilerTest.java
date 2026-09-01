@@ -1,6 +1,7 @@
 package io.demoguard.reconciler;
 
 import io.demoguard.api.DemoReadinessStatus;
+import io.demoguard.api.DemoPolicySpec;
 import io.demoguard.api.ReadinessStatus;
 import io.demoguard.api.RuntimeStatus;
 import io.demoguard.api.RolloutStatus;
@@ -45,6 +46,22 @@ class DemoPolicyReconcilerTest {
                 DemoPolicyReconciler.class.getAnnotation(ControllerConfiguration.class);
 
         assertFalse(configuration.generationAwareEventProcessing());
+    }
+
+    @Test
+    void rejectsMissingOrMalformedPolicySpecsBeforeKubernetesLookup() {
+        assertEquals("spec is required", DemoPolicyReconciler.validateSpec(null));
+
+        DemoPolicySpec spec = new DemoPolicySpec();
+        spec.setTargetNamespace("Default");
+        spec.setTargetDeployment("valid-name");
+        assertEquals("spec.targetNamespace must be a valid Kubernetes namespace name",
+                DemoPolicyReconciler.validateSpec(spec));
+
+        spec.setTargetNamespace("default");
+        spec.setTargetDeployment("invalid/name");
+        assertEquals("spec.targetDeployment must be a valid Kubernetes resource name",
+                DemoPolicyReconciler.validateSpec(spec));
     }
 
     @Test

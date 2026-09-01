@@ -1,10 +1,12 @@
 # DemoGuard
 
-DemoGuard is a Kubernetes preflight operator that tells teams whether a workload is safe to demo before they present.
+DemoGuard is a Kubernetes preflight operator for teams preparing to present a live application. It evaluates the workload state that commonly causes demos to fail—unsafe rollout settings, missing disruption protection, resource pressure, unhealthy pods, and stalled Deployments—before the presentation starts.
+
+The operator records a point-in-time `DemoReadiness` assessment with a score, ordered checks, findings, and reviewable remediation guidance. A read-only dashboard presents that real Kubernetes result without querying Prometheus directly or inventing status data. DemoGuard never changes application workloads.
 
 ## Install and use DemoGuard
 
-Use these steps after cloning the repository to install DemoGuard and assess one of your own applications.
+This is the primary path for installing DemoGuard locally and assessing an application.
 
 ### 1. Prerequisites
 
@@ -24,7 +26,7 @@ cd demoguard
 
 ### 3. Local Kind installation
 
-Create a Kind cluster named `demoguard` if you do not already have one:
+Create a Kind cluster named `demoguard` if needed:
 
 ```bash
 kind create cluster --name demoguard
@@ -46,7 +48,9 @@ helm install demoguard ./charts/demoguard -n demoguard --create-namespace
 kubectl get pods -n demoguard
 ```
 
-Forward the dashboard service. Keep this command running while you use the dashboard:
+The chart uses `IfNotPresent` by default, so Kind uses the loaded images. Its default Prometheus endpoint is `http://prometheus-server.monitoring.svc.cluster.local`.
+
+Forward the dashboard service and keep the command running while you use the dashboard:
 
 ```bash
 kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
@@ -71,7 +75,7 @@ spec:
   demoDurationMinutes: 30
 ```
 
-Replace `my-app` in `targetDeployment` with the name of your Deployment. If the Deployment is in another namespace, change both `metadata.namespace` and `targetNamespace` to that namespace. Then apply the policy:
+Replace `my-app` in `targetDeployment` with your Deployment name. For a Deployment in another namespace, change both `metadata.namespace` and `targetNamespace`. Then apply the policy:
 
 ```bash
 kubectl apply -f my-app-policy.yaml
@@ -90,7 +94,7 @@ kubectl get demoreadiness my-app-readiness -o yaml
 
 ### 6. Using a non-Kind cluster
 
-This repository does not configure a public container registry. Build and push both images to a registry that your cluster can access, then override the chart's image repositories and tags. For example, after pushing both images with the tag `0.1.0`:
+The repository does not configure a public container registry. For a non-Kind cluster, build and push both images to a registry the cluster can access, then override the chart repositories and tags. After pushing both images with the tag `0.1.0`:
 
 ```bash
 helm install demoguard ./charts/demoguard \
@@ -101,15 +105,11 @@ helm install demoguard ./charts/demoguard \
   --set dashboard.image.tag=0.1.0
 ```
 
-Replace `YOUR_REGISTRY` with the registry path where you pushed the images. Configure registry credentials in the cluster if that registry is private.
+Replace `YOUR_REGISTRY` with the registry path containing the images. Configure cluster credentials if the registry is private.
 
-### 7. What happens after installation
+### 7. How the assessment works
 
-DemoGuard watches the `DemoPolicy`, evaluates its target Deployment, and writes the result to a `DemoReadiness` resource. The dashboard reads that resource to display the assessment. DemoGuard never changes your workloads automatically.
-
-## Why DemoGuard
-
-Demo failures are often predictable, but teams discover the warning signs too late: unsafe rollout settings, missing disruption budgets, undersized resources, restarting pods, unavailable replicas, or a rollout that never completes. DemoGuard evaluates those signals together and records a point-in-time decision before the presentation starts.
+DemoGuard watches the `DemoPolicy`, evaluates its target Deployment, and writes a same-namespace `DemoReadiness` resource. The dashboard reads that resource to display the assessment. DemoGuard never changes workloads automatically.
 
 ## What it checks
 
@@ -157,54 +157,9 @@ The operator is the source of truth, and the dashboard does not query Prometheus
   </tbody>
 </table>
 
-## Quick start: Kind + Helm
-
-This is the recommended way to run DemoGuard locally.
-
-### Prerequisites
-
-- Docker
-- Kind with a cluster named `demoguard`
-- `kubectl`
-- Helm 3
-
-Build the operator and dashboard images from the repository root:
-
-```bash
-docker build -t demoguard-operator:0.1.0 ./operator
-docker build -t demoguard-dashboard:0.1.0 ./dashboard
-```
-
-Load both images into Kind:
-
-```bash
-kind load docker-image demoguard-operator:0.1.0 --name demoguard
-kind load docker-image demoguard-dashboard:0.1.0 --name demoguard
-```
-
-Install DemoGuard in its own namespace:
-
-```bash
-helm install demoguard ./charts/demoguard -n demoguard --create-namespace
-```
-
-The chart defaults to `IfNotPresent`, so Kind uses the loaded images. Its default Prometheus endpoint is `http://prometheus-server.monitoring.svc.cluster.local`.
-
-Check the installation:
-
-```bash
-kubectl get pods -n demoguard
-```
-
-Forward the dashboard and open [http://localhost:8080](http://localhost:8080):
-
-```bash
-kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
-```
-
 ## Using the dashboard
 
-Choose a namespace, then select one of its `DemoPolicy` resources. The dashboard displays the latest score, findings, recommendations, forecast and rollout states, and the ordered preflight checks.
+Choose a namespace and one of its `DemoPolicy` resources. The dashboard displays the latest score, findings, recommendations, forecast and rollout states, and ordered preflight checks.
 
 **Refresh assessment** patches only the selected policy's `demoguard.dev/refresh` annotation, requesting a new operator reconciliation. For remediation plans with YAML, expand **Review patch YAML** and use **Copy patch** to copy it for external review.
 
@@ -212,7 +167,7 @@ Remediation is review/copy only. DemoGuard never applies changes automatically, 
 
 ## Live dashboard results
 
-These screenshots show real, operator-backed `DemoReadiness` assessments from a Kubernetes cluster, not mock dashboard states. The dashboard reads the status published by the DemoGuard operator and does not invent results.
+These screenshots show operator-backed `DemoReadiness` assessments from a Kubernetes cluster. They are not mock dashboard states.
 
 <details>
   <summary>Existing workload (`default` namespace) — WARNING · 80/100</summary>
@@ -250,9 +205,9 @@ These screenshots show real, operator-backed `DemoReadiness` assessments from a 
        width="1200" />
 </details>
 
-## Live demo scenarios
+## Reproducible demo scenarios
 
-The manifests in `config/demo-scenarios/` use real Kubernetes state. Create their namespace once:
+The manifests in `config/demo-scenarios/` produce controlled outcomes from real Kubernetes state. Create the isolated namespace once:
 
 ```bash
 kubectl apply -f config/demo-scenarios/namespace.yaml
@@ -295,7 +250,7 @@ kubectl get demoreadiness demoguard-stalled-rollout-readiness --namespace demogu
 
 Expected: `BLOCKED / 40`, rollout status `STALLED`, and a `ProgressDeadlineExceeded` condition. Before the deadline, `ROLLING_OUT` is expected.
 
-Clean up all scenarios and generated readiness resources:
+Clean up the scenarios and their generated readiness resources:
 
 ```bash
 kubectl delete -f config/demo-scenarios/healthy.yaml --ignore-not-found
@@ -305,7 +260,9 @@ kubectl delete demoreadiness demoguard-healthy-readiness demoguard-static-risk-r
 kubectl delete -f config/demo-scenarios/namespace.yaml --ignore-not-found
 ```
 
-## Local development
+The safe and unsafe variants in `demo-workloads/` use the same dedicated namespace. Create it with `kubectl apply -f config/demo-scenarios/namespace.yaml` before applying those workloads.
+
+## Development
 
 Forward the Prometheus service used by the chart:
 
@@ -328,11 +285,11 @@ cd dashboard
 mvn spring-boot:run
 ```
 
-## Security and permissions
+## Security model
 
-The dashboard ServiceAccount can read namespaces, `DemoPolicy`, and `DemoReadiness` resources. Its only write permission is `patch` on `DemoPolicy`, used to set the refresh annotation.
+The dashboard ServiceAccount can read namespaces, `DemoPolicy`, and `DemoReadiness` resources. Its only write permission is `patch` on `DemoPolicy`, which sets the refresh annotation.
 
-It cannot modify Deployments, Pods, PodDisruptionBudgets, Secrets, or other workloads. It has no permission to read Secrets.
+It cannot modify Deployments, Pods, PodDisruptionBudgets, Secrets, or other workloads, and it cannot read Secrets.
 
 ## Project structure
 
@@ -342,6 +299,7 @@ dashboard/              Spring Boot API and React/TypeScript UI
 charts/demoguard/       Helm chart, RBAC, and packaged CRDs
 config/crd/             DemoPolicy and DemoReadiness CRDs
 config/demo-scenarios/  Controlled live-demo manifests
+demo-workloads/         Safe/unsafe workload variants for the isolated demoguard-demo namespace
 ```
 
 ## Testing
@@ -350,11 +308,11 @@ config/demo-scenarios/  Controlled live-demo manifests
 # Operator tests
 cd operator && mvn test
 
-# Dashboard tests
-cd ../dashboard && mvn test
-
 # Frontend tests and production build
-cd frontend && npm install && npm test && npm run build
+cd ../dashboard/frontend && npm ci && npm test && npm run build
+
+# Dashboard backend and packaged-static-resource tests
+cd .. && mvn test
 
 # Helm validation (from the repository root)
 cd ../.. && helm lint ./charts/demoguard

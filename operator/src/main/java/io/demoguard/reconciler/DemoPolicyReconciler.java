@@ -37,6 +37,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @ControllerConfiguration(generationAwareEventProcessing = false)
 public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
@@ -45,6 +46,10 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     private static final int WARNING_PENALTY = 20;
     private static final int WARNING_SCORE_FLOOR = 60;
     private static final int BLOCKED_SCORE_CAP = 40;
+    private static final Pattern DNS_LABEL = Pattern.compile("[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?");
+    private static final Pattern DNS_SUBDOMAIN = Pattern.compile(
+            "[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?"
+                    + "(?:\\.[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?)*");
 
     private final KubernetesClient client;
     private final DeploymentValidator validator;
@@ -94,7 +99,15 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
     @Override
     public UpdateControl<DemoPolicy> reconcile(DemoPolicy policy, Context<DemoPolicy> context) {
         String policyNamespace = policy.getMetadata().getNamespace();
-        DemoPolicySpec spec = Objects.requireNonNull(policy.getSpec(), "DemoPolicy spec must not be null");
+        DemoPolicySpec spec = policy.getSpec();
+        String validationError = validateSpec(spec);
+        if (validationError != null) {
+            DemoReadinessStatus status = invalidPolicyStatus(validationError);
+            PreflightReportBuilder.populate(status, ReadinessStatus.BLOCKED);
+            markAssessmentComplete(status, Instant.now());
+            upsertReadiness(policy.getMetadata().getName(), policyNamespace, status);
+            return UpdateControl.noUpdate();
+        }
 
         Deployment deployment = client.apps().deployments()
                 .inNamespace(spec.getTargetNamespace())
@@ -273,10 +286,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             }
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-            String detail = exception.getMessage() == null
-                    ? exception.getClass().getSimpleName() : exception.getMessage();
             unknownMemoryForecast(status,
-                    "Memory forecast unavailable because Prometheus could not be queried: " + detail);
+                    "Memory forecast unavailable because Prometheus could not be queried");
         }
     }
 
@@ -313,10 +324,8 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
             if (forecast.risk() == CpuRisk.AT_RISK) applyCpuRiskWarning(status);
         } catch (Exception exception) {
             if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-            String detail = exception.getMessage() == null
-                    ? exception.getClass().getSimpleName() : exception.getMessage();
             unknownCpuForecast(status,
-                    "CPU forecast unavailable because Prometheus could not be queried: " + detail);
+                    "CPU forecast unavailable because Prometheus could not be queried");
         }
     }
 
@@ -380,6 +389,41 @@ public final class DemoPolicyReconciler implements Reconciler<DemoPolicy> {
         status.setFindings(List.of("Target Deployment " + spec.getTargetNamespace() + "/"
                 + spec.getTargetDeployment() + " was not found"));
         status.setRecommendations(List.of("Create the target Deployment or correct the DemoPolicy target"));
+        return status;
+    }
+
+    static String validateSpec(DemoPolicySpec spec) {
+        if (spec == null) return "spec is required";
+        if (!valid(spec.getTargetNamespace(), DNS_LABEL, 63)) {
+            return "spec.targetNamespace must be a valid Kubernetes namespace name";
+        }
+        if (!valid(spec.getTargetDeployment(), DNS_SUBDOMAIN, 253)) {
+            return "spec.targetDeployment must be a valid Kubernetes resource name";
+        }
+        if (spec.getMinimumReplicas() != null && spec.getMinimumReplicas() < 0) {
+            return "spec.minimumReplicas must not be negative";
+        }
+        if (spec.getDemoDurationMinutes() != null && spec.getDemoDurationMinutes() < 1) {
+            return "spec.demoDurationMinutes must be at least 1";
+        }
+        return null;
+    }
+
+    private static boolean valid(String value, Pattern pattern, int maximumLength) {
+        return value != null && value.length() <= maximumLength && pattern.matcher(value).matches();
+    }
+
+    private static DemoReadinessStatus invalidPolicyStatus(String validationError) {
+        DemoReadinessStatus status = new DemoReadinessStatus();
+        status.setReadinessStatus(ReadinessStatus.BLOCKED);
+        status.setScore(0);
+        status.setScoreMessage("Score 0: DemoPolicy is invalid");
+        status.setFindings(List.of("DemoPolicy is invalid: " + validationError));
+        status.setRecommendations(List.of("Correct the DemoPolicy specification"));
+        status.setRuntimeMessage("Runtime health unavailable because the DemoPolicy is invalid");
+        status.setRolloutMessage("Rollout state unavailable because the DemoPolicy is invalid");
+        status.setPredictionMessage("Memory forecast unavailable because the DemoPolicy is invalid");
+        status.setCpuPredictionMessage("CPU forecast unavailable because the DemoPolicy is invalid");
         return status;
     }
 }
