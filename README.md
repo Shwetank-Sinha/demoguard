@@ -8,34 +8,49 @@ Demo failures are often predictable, but teams discover the warning signs too la
 
 ## What it checks
 
-| Area | Assessment |
-| --- | --- |
-| Static configuration | Replica count, readiness probes, resource requests and limits, rolling-update safety, and PodDisruptionBudget coverage |
-| Runtime health | Ready and available replicas, pod phases, container restarts, and fatal waiting states such as `CrashLoopBackOff` |
-| Forecast signals | CPU and memory usage projected across the configured demo window from Prometheus history |
-| Rollout state | Observed generation, updated/Ready/available replicas, and failed-progress conditions |
-| Safe remediation | Deterministic review items and YAML where DemoGuard can infer a safe change |
-| Preflight result | Ordered checks, summary, final `READY`, `WARNING`, or `BLOCKED` status, and a score |
+<table style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr style="background: #14213d; color: #ffffff;">
+      <th style="border: 1px solid #d0d7de; padding: 6px 13px; text-align: left;">Area</th>
+      <th style="border: 1px solid #d0d7de; padding: 6px 13px; text-align: left;">Assessment</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Static configuration</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Replica count, readiness probes, resource requests and limits, rolling-update safety, and PodDisruptionBudget coverage</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Runtime health</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Ready and available replicas, pod phases, container restarts, and fatal waiting states such as <code>CrashLoopBackOff</code></td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Forecast signals</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">CPU and memory usage projected across the configured demo window from Prometheus history</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Rollout state</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Observed generation, updated/Ready/available replicas, and failed-progress conditions</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Safe remediation</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Deterministic review items and YAML where DemoGuard can infer a safe change</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Preflight result</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Ordered checks, summary, final <code>READY</code>, <code>WARNING</code>, or <code>BLOCKED</code> status, and a score</td></tr>
+  </tbody>
+</table>
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    K[Kubernetes workloads] --> O[DemoGuard operator]
-    P[Prometheus] --> O
-    O --> R[DemoReadiness]
-    R --> D[Dashboard]
+```text
+Kubernetes workloads ─┐
+                      ├─> DemoGuard operator ─> DemoReadiness ─> Dashboard
+Prometheus ───────────┘
 ```
 
-The operator watches `DemoPolicy` resources, evaluates the target Deployment, and writes a same-namespace `DemoReadiness` resource. The dashboard reads Kubernetes resources and does not query Prometheus directly.
+The operator is the source of truth, and the dashboard does not query Prometheus directly.
 
 ## Demo outcomes
 
-| Scenario | Expected outcome | Meaning |
-| --- | --- | --- |
-| Healthy deployment | `READY / 100` | Static checks pass, runtime is healthy, and rollout is stable |
-| Static-risk deployment | `BLOCKED / 40` | Replica, rollout, and PDB risks produce reviewable remediation plans |
-| Stalled rollout | `BLOCKED / 40` | Kubernetes reports `ProgressDeadlineExceeded` |
+<table style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr style="background: #14213d; color: #ffffff;">
+      <th style="border: 1px solid #d0d7de; padding: 6px 13px; text-align: left;">Scenario</th>
+      <th style="border: 1px solid #d0d7de; padding: 6px 13px; text-align: left;">Expected outcome</th>
+      <th style="border: 1px solid #d0d7de; padding: 6px 13px; text-align: left;">Meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Healthy deployment</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;"><code>READY / 100</code></td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Static checks pass, runtime is healthy, and rollout is stable</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Static-risk deployment</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;"><code>BLOCKED / 40</code></td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Replica, rollout, and PDB risks produce reviewable remediation plans</td></tr>
+    <tr style="background: #ffffff;"><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Stalled rollout</td><td style="border: 1px solid #d0d7de; padding: 6px 13px;"><code>BLOCKED / 40</code></td><td style="border: 1px solid #d0d7de; padding: 6px 13px;">Kubernetes reports <code>ProgressDeadlineExceeded</code></td></tr>
+  </tbody>
+</table>
 
 ## Quick start: Kind + Helm
 
