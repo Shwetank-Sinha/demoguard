@@ -1,102 +1,166 @@
 # DemoGuard
 
-DemoGuard is a Java Kubernetes operator that evaluates Kubernetes Deployments for zero-downtime demo readiness. It combines static Deployment and PodDisruptionBudget checks, live Deployment and pod health, Deployment rollout safety, and low-confidence Prometheus memory and CPU-risk forecasts for the planned demo window.
+DemoGuard is a Kubernetes preflight operator that tells teams whether a workload is safe to demo before they present.
 
-The operator uses the current kubeconfig and active Kubernetes context when run locally. It watches `DemoPolicy` resources and writes the validation result to a same-namespace `DemoReadiness` resource.
+## Why DemoGuard
 
-## Run the unsafe example
+Demo failures are often predictable, but teams discover the warning signs too late: unsafe rollout settings, missing disruption budgets, undersized resources, restarting pods, unavailable replicas, or a rollout that never completes. DemoGuard evaluates those signals together and records a point-in-time decision before the presentation starts.
 
-From the repository root, apply both CRDs:
+## What it checks
 
-```bash
-kubectl apply -f config/crd/demoguard.dev_demopolicies.yaml
-kubectl apply -f config/crd/demoguard.dev_demoreadinesses.yaml
+| Area | Assessment |
+| --- | --- |
+| Static configuration | Replica count, readiness probes, resource requests and limits, rolling-update safety, and PodDisruptionBudget coverage |
+| Runtime health | Ready and available replicas, pod phases, container restarts, and fatal waiting states such as `CrashLoopBackOff` |
+| Forecast signals | CPU and memory usage projected across the configured demo window from Prometheus history |
+| Rollout state | Observed generation, updated/Ready/available replicas, and failed-progress conditions |
+| Safe remediation | Deterministic review items and YAML where DemoGuard can infer a safe change |
+| Preflight result | Ordered checks, summary, final `READY`, `WARNING`, or `BLOCKED` status, and a score |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    K[Kubernetes workloads] --> O[DemoGuard operator]
+    P[Prometheus] --> O
+    O --> R[DemoReadiness]
+    R --> D[Dashboard]
 ```
 
-The `DemoPolicy` field `spec.demoDurationMinutes` controls the forecast window and defaults to 30 minutes. DemoGuard reads the Prometheus base URL from `PROMETHEUS_URL`; it defaults to `http://localhost:9090` for local development.
+The operator watches `DemoPolicy` resources, evaluates the target Deployment, and writes a same-namespace `DemoReadiness` resource. The dashboard reads Kubernetes resources and does not query Prometheus directly.
 
-Start the operator locally in a separate terminal, pointing it at Prometheus:
+## Demo outcomes
+
+| Scenario | Expected outcome | Meaning |
+| --- | --- | --- |
+| Healthy deployment | `READY / 100` | Static checks pass, runtime is healthy, and rollout is stable |
+| Static-risk deployment | `BLOCKED / 40` | Replica, rollout, and PDB risks produce reviewable remediation plans |
+| Stalled rollout | `BLOCKED / 40` | Kubernetes reports `ProgressDeadlineExceeded` |
+
+## Quick start: Kind + Helm
+
+This is the recommended way to run DemoGuard locally.
+
+### Prerequisites
+
+- Docker
+- Kind with a cluster named `demoguard`
+- `kubectl`
+- Helm 3
+
+Build the operator and dashboard images from the repository root:
+
+```bash
+docker build -t demoguard-operator:0.1.0 ./operator
+docker build -t demoguard-dashboard:0.1.0 ./dashboard
+```
+
+Load both images into Kind:
+
+```bash
+kind load docker-image demoguard-operator:0.1.0 --name demoguard
+kind load docker-image demoguard-dashboard:0.1.0 --name demoguard
+```
+
+Install DemoGuard in its own namespace:
+
+```bash
+helm install demoguard ./charts/demoguard -n demoguard --create-namespace
+```
+
+The chart defaults to `IfNotPresent`, so Kind uses the loaded images. Its default Prometheus endpoint is `http://prometheus-server.monitoring.svc.cluster.local`.
+
+Check the installation:
+
+```bash
+kubectl get pods -n demoguard
+```
+
+Forward the dashboard and open [http://localhost:8080](http://localhost:8080):
+
+```bash
+kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
+```
+
+## Using the dashboard
+
+Choose a namespace, then select one of its `DemoPolicy` resources. The dashboard displays the latest score, findings, recommendations, forecast and rollout states, and the ordered preflight checks.
+
+**Refresh assessment** patches only the selected policy's `demoguard.dev/refresh` annotation, requesting a new operator reconciliation. For remediation plans with YAML, expand **Review patch YAML** and use **Copy patch** to copy it for external review.
+
+Remediation is review/copy only. DemoGuard never applies changes automatically, and the dashboard has no Apply action.
+
+## Live demo scenarios
+
+The manifests in `config/demo-scenarios/` use real Kubernetes state. Create their namespace once:
+
+```bash
+kubectl apply -f config/demo-scenarios/namespace.yaml
+```
+
+### Healthy
+
+```bash
+kubectl apply -f config/demo-scenarios/healthy.yaml
+kubectl rollout status deployment/demoguard-healthy --namespace demoguard-demo --timeout=90s
+kubectl annotate demopolicy demoguard-healthy --namespace demoguard-demo demoguard.dev/refresh="$(date +%s)" --overwrite
+kubectl get demoreadiness demoguard-healthy-readiness --namespace demoguard-demo -o yaml
+```
+
+Expected: `READY / 100`. Without usable Prometheus history, CPU and memory can remain `UNKNOWN` without lowering readiness.
+
+### Static risk
+
+```bash
+kubectl apply -f config/demo-scenarios/static-risk.yaml
+kubectl get demoreadiness demoguard-static-risk-readiness --namespace demoguard-demo -o yaml
+```
+
+Expected: `BLOCKED / 40`, with remediation plans for the unsafe replica, rolling-update, and PDB configuration.
+
+### Stalled rollout
+
+```bash
+kubectl apply -f config/demo-scenarios/stalled-rollout.yaml
+kubectl get deployment demoguard-stalled-rollout --namespace demoguard-demo --watch
+```
+
+After the configured 30-second progress deadline, stop the watch and refresh the assessment:
+
+```bash
+kubectl get deployment demoguard-stalled-rollout --namespace demoguard-demo -o jsonpath='{range .status.conditions[*]}{.type}{"\t"}{.status}{"\t"}{.reason}{"\n"}{end}'
+kubectl annotate demopolicy demoguard-stalled-rollout --namespace demoguard-demo demoguard.dev/refresh="$(date +%s)" --overwrite
+kubectl get demoreadiness demoguard-stalled-rollout-readiness --namespace demoguard-demo -o yaml
+```
+
+Expected: `BLOCKED / 40`, rollout status `STALLED`, and a `ProgressDeadlineExceeded` condition. Before the deadline, `ROLLING_OUT` is expected.
+
+Clean up all scenarios and generated readiness resources:
+
+```bash
+kubectl delete -f config/demo-scenarios/healthy.yaml --ignore-not-found
+kubectl delete -f config/demo-scenarios/static-risk.yaml --ignore-not-found
+kubectl delete -f config/demo-scenarios/stalled-rollout.yaml --ignore-not-found
+kubectl delete demoreadiness demoguard-healthy-readiness demoguard-static-risk-readiness demoguard-stalled-rollout-readiness --namespace demoguard-demo --ignore-not-found
+kubectl delete -f config/demo-scenarios/namespace.yaml --ignore-not-found
+```
+
+## Local development
+
+Forward the Prometheus service used by the chart:
+
+```bash
+kubectl -n monitoring port-forward service/prometheus-server 9090:80
+```
+
+Run the operator against it in another terminal:
 
 ```bash
 cd operator
 PROMETHEUS_URL=http://localhost:9090 mvn exec:java
 ```
 
-Prometheus must expose cAdvisor's `container_memory_working_set_bytes` and `container_cpu_usage_seconds_total`, plus kube-state-metrics' `kube_pod_container_resource_limits`. DemoGuard uses `query_range` history to project usage through the configured demo window. When available, `container_cpu_cfs_throttled_seconds_total` supplies an additional sustained-throttling signal.
-
-`memoryRisk` and `cpuRisk` are each `SAFE`, `AT_RISK`, or `UNKNOWN`. CPU is at risk when its projection reaches 80% of the CPU limit during the demo window or sustained throttling reaches 10% of the limit. Missing Prometheus metrics or insufficient history produce an honest `UNKNOWN`; they do not change static or runtime-health results. Each `AT_RISK` forecast applies a 20-point penalty to the static-validation base score, with a floor of 60, so forecast risk produces `WARNING` but never `BLOCKED` by itself.
-
-Memory breach timing is only published in `predictedLimitBreachInMinutes` when the breach falls inside `spec.demoDurationMinutes`. Forecasts beyond that horizon remain `SAFE`, omit the distant breach time, and state that no breach is projected during the demo window.
-
-For runtime validation, DemoGuard reads the Deployment's desired, Ready, available, and unavailable replica counts and inspects pods selected by the Deployment. It reports aggregate container restart counts, pod phases, and active waiting reasons including `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, and `CreateContainerConfigError`.
-
-`runtimeStatus` is `HEALTHY`, `DEGRADED`, or `UNHEALTHY`. Zero Ready or available replicas, failed pods, and active fatal container waiting states block the demo. Replica counts below `spec.minimumReplicas` and restarts without an active crash loop produce a warning. `DEGRADED` applies a 20-point penalty with a floor of 60; `UNHEALTHY` caps the score at 40. Static or runtime `BLOCKED` results always remain blocked, while memory or CPU risk can promote a non-blocked result to `WARNING` but cannot weaken a block.
-
-For deployment-change protection, DemoGuard compares `metadata.generation` with `status.observedGeneration`, checks desired, updated, Ready, available, and unavailable replicas, and inspects Deployment conditions. `rolloutStatus` is `STABLE` when the latest generation is fully observed and all desired replicas are updated, Ready, and available; `ROLLING_OUT` while those values are catching up; `STALLED` when Kubernetes reports failed progress, including `ProgressDeadlineExceeded` or `ReplicaFailure`; and `UNKNOWN` when required status data is absent. Condition reasons are retained in `rolloutMessage`.
-
-A rolling rollout applies a 20-point warning penalty (with the shared warning floor of 60) and recommends waiting before presenting. A stalled rollout always makes final readiness `BLOCKED`, caps the score at 40, and recommends rollback or repair. A stable rollout does not alter readiness or score. Existing static, runtime, memory, and CPU risks keep their precedence: warning deductions accumulate, and no warning can weaken a blocked result.
-
-The final score always matches `readinessStatus`: `READY` is exactly 100, `WARNING` is 60–99, and `BLOCKED` is below 60. `scoreMessage` starts with the static-validation base score and lists each runtime or forecast adjustment that affected the final score.
-
-Every result also includes a concise demo preflight report. `preflightStatus` exactly matches the final `readinessStatus`, while `preflightSummary` identifies the first blocking or warning reason (or confirms that the workload is ready for the configured demo window). `preflightChecks` always appears in `STATIC`, `RUNTIME`, `MEMORY`, `CPU`, `ROLLOUT`, `REMEDIATION` order. Each check is `PASS`, `WARNING`, `BLOCKED`, `UNKNOWN`, or `NOT_REQUIRED`; unavailable Prometheus forecasts remain `UNKNOWN` and do not block an otherwise healthy workload. Remediation checks report only the plan count and ask the team to review the plans—patch YAML remains in `remediationPlans`.
-
-Static configuration failures also appear in `status.remediationPlans` as deterministic, deduplicated review items. Each item identifies its target and severity, explains the change, and says whether DemoGuard could infer a safe patch. DemoGuard emits strategic-merge YAML for replicas below the policy minimum, a complete PDB manifest when the Deployment selector is safely reusable, and a PDB patch when `minAvailable` is below the policy minimum. `remediationSummary` reports patch and team-decision counts without copying multiline patches into findings or `scoreMessage`.
-
-Probe endpoints and CPU or memory quantities are application decisions, so their plans use `safeToApply: false` and `patchFormat: NONE`. DemoGuard never applies remediation plans or changes the target Deployment or PDB; operators must review any emitted YAML before applying it.
-
-Apply the deliberately unsafe Deployment and its policy:
-
-```bash
-kubectl apply -f demo-workloads/unsafe-deployment.yaml
-kubectl apply -f demo-workloads/unsafe-policy.yaml
-```
-
-View the generated readiness result (the CRD also prints the preflight summary, runtime health, rollout state, CPU risk, and Ready replicas):
-
-```bash
-kubectl get demoreadiness
-kubectl get demoreadiness hackathon-app-readiness -o yaml
-```
-
-## Blocked to Ready demo
-
-After applying the unsafe example and observing the blocked readiness result, apply the safe Deployment and its PodDisruptionBudget:
-
-```bash
-kubectl apply -f demo-workloads/safe-deployment.yaml
-kubectl apply -f demo-workloads/safe-pdb.yaml
-```
-
-Watch the workload become available, then view the updated readiness result:
-
-```bash
-kubectl rollout status deployment/hackathon-app --namespace default
-kubectl get demoreadiness hackathon-app-readiness -o yaml
-```
-
-Delete the test resources:
-
-```bash
-kubectl delete -f demo-workloads/unsafe-policy.yaml
-kubectl delete demoreadiness hackathon-app-readiness --namespace default --ignore-not-found
-kubectl delete -f demo-workloads/safe-pdb.yaml --ignore-not-found
-kubectl delete -f demo-workloads/unsafe-deployment.yaml
-```
-
-## Test
-
-```bash
-cd operator
-mvn test
-```
-
-## Live dashboard
-
-The `dashboard` module is a Spring Boot backend and React/TypeScript frontend for the real `DemoPolicy` and `DemoReadiness` resources in the connected cluster. The operator remains the source of truth: the dashboard reads its point-in-time results and never queries Prometheus directly.
-
-### Local development
-
-The backend uses Fabric8's standard Kubernetes client configuration. Locally, that means the active context from your kubeconfig (normally `$KUBECONFIG` or `~/.kube/config`). Verify the intended context before starting it:
+Run the Spring Boot dashboard against the active kubeconfig context:
 
 ```bash
 kubectl config current-context
@@ -104,95 +168,44 @@ cd dashboard
 mvn spring-boot:run
 ```
 
-In another terminal, start the Vite development server. It proxies `/api` to Spring Boot, preserving the same API paths used by the production build:
+## Security and permissions
 
-```bash
-cd dashboard/frontend
-npm install
-npm run dev
+The dashboard ServiceAccount can read namespaces, `DemoPolicy`, and `DemoReadiness` resources. Its only write permission is `patch` on `DemoPolicy`, used to set the refresh annotation.
+
+It cannot modify Deployments, Pods, PodDisruptionBudgets, Secrets, or other workloads. It has no permission to read Secrets.
+
+## Project structure
+
+```text
+operator/               Java operator and readiness logic
+dashboard/              Spring Boot API and React/TypeScript UI
+charts/demoguard/       Helm chart, RBAC, and packaged CRDs
+config/crd/             DemoPolicy and DemoReadiness CRDs
+config/demo-scenarios/  Controlled live-demo manifests
 ```
 
-Open `http://localhost:5173`. To build the frontend and package it into the Spring Boot application so UI and API share one origin:
+## Testing
 
 ```bash
-cd dashboard/frontend
-npm run build
-cd ..
-mvn package
-java -jar target/demoguard-dashboard-0.1.0-SNAPSHOT.jar
-```
+# Operator tests
+cd operator && mvn test
 
-The production frontend build is read from `dashboard/frontend/dist` and included at the root of the Spring Boot JAR.
+# Dashboard tests
+cd ../dashboard && mvn test
 
-### In-cluster authentication and RBAC
+# Frontend tests and production build
+cd frontend && npm install && npm test && npm run build
 
-In Kubernetes, Fabric8 automatically uses the Pod's mounted ServiceAccount token and in-cluster API endpoint. `config/dashboard/dashboard.yaml` creates the `demoguard-dashboard` ServiceAccount and grants only:
+# Helm validation (from the repository root)
+cd ../.. && helm lint ./charts/demoguard
 
-- `get`, `list`, and `watch` on namespaces, `DemoPolicy`, and `DemoReadiness` resources;
-- `patch` on `DemoPolicy` resources, solely for the `demoguard.dev/refresh` reconciliation annotation.
-
-The dashboard has no read or write permission for Secrets and no write permission for Deployments, Pods, PodDisruptionBudgets, or other workloads. Apply the manifests after making a deployable dashboard image available to your cluster and setting the Deployment's `image` value as appropriate:
-
-```bash
-kubectl apply -f config/dashboard/dashboard.yaml
-kubectl port-forward service/demoguard-dashboard 8080:8080 --namespace default
-```
-
-Then open `http://localhost:8080`.
-
-Remediation plans in the dashboard are strictly review/copy only. A Copy patch control appears only when the operator supplies patch content. The dashboard never applies remediation YAML and intentionally provides no Apply control.
-
-## Install in Kind with Helm
-
-The Helm chart installs both CRDs, the real operator, the dashboard, and their ServiceAccounts and RBAC. No Maven or source process is needed after the images are built. The commands below use local images, so no cloud registry is required.
-
-From the repository root, build both images (Docker automatically builds for the host architecture, including Apple Silicon):
-
-```bash
+# Container builds
 docker build -t demoguard-operator:0.1.0 ./operator
 docker build -t demoguard-dashboard:0.1.0 ./dashboard
 ```
 
-Load the images into the Kind cluster named `demoguard`:
+## Limitations
 
-```bash
-kind load docker-image demoguard-operator:0.1.0 --name demoguard
-kind load docker-image demoguard-dashboard:0.1.0 --name demoguard
-```
-
-Install DemoGuard into its own namespace:
-
-```bash
-helm install demoguard ./charts/demoguard -n demoguard --create-namespace
-```
-
-The images default to `IfNotPresent`, which allows Kind to use the images loaded above. The default Prometheus endpoint is `http://prometheus-server.monitoring.svc.cluster.local`.
-
-Access the private ClusterIP dashboard with a local port-forward, then open `http://localhost:8080`:
-
-```bash
-kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
-```
-
-Override image repositories, tags, pull policies, or Prometheus when installing:
-
-```bash
-helm install demoguard ./charts/demoguard -n demoguard --create-namespace \
-  --set operator.image.repository=example/demoguard-operator \
-  --set operator.image.tag=1.2.3 \
-  --set operator.image.pullPolicy=IfNotPresent \
-  --set dashboard.image.repository=example/demoguard-dashboard \
-  --set dashboard.image.tag=1.2.3 \
-  --set dashboard.image.pullPolicy=IfNotPresent \
-  --set prometheus.url=http://prometheus-server.monitoring.svc.cluster.local
-```
-
-The same values can be placed in a YAML file and passed with `-f my-values.yaml`. `nameOverride`, `fullnameOverride`, and each component's `serviceAccount.name` are available when installations need different resource names. Resource requests and limits are under `operator.resources` and `dashboard.resources`.
-
-Uninstall the release:
-
-```bash
-helm uninstall demoguard -n demoguard
-```
-
-Helm intentionally retains CRDs and their custom resources on uninstall. Remove them separately only when their data is no longer needed.
+- CPU and memory forecasts depend on the availability and history of the required Prometheus metrics.
+- The dashboard is intentionally a point-in-time assessment, not a historical observability platform.
+- Local Kind images must be rebuilt and reloaded after code changes.
