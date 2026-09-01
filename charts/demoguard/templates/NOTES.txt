@@ -1,0 +1,4 @@
+DemoGuard is installed in namespace {{ .Release.Namespace }}.
+
+Access the dashboard locally:
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "demoguard.dashboardName" . }} 8080:8080

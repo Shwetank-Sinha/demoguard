@@ -1,0 +1,12 @@
+target
+frontend/node_modules
+frontend/dist
+.git
+.idea
+.vscode
+*.iml
+*.log
+**/src/test
+**/.env
+**/*kubeconfig*
+**/*token*

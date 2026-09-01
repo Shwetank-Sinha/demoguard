@@ -141,3 +141,58 @@ kubectl port-forward service/demoguard-dashboard 8080:8080 --namespace default
 Then open `http://localhost:8080`.
 
 Remediation plans in the dashboard are strictly review/copy only. A Copy patch control appears only when the operator supplies patch content. The dashboard never applies remediation YAML and intentionally provides no Apply control.
+
+## Install in Kind with Helm
+
+The Helm chart installs both CRDs, the real operator, the dashboard, and their ServiceAccounts and RBAC. No Maven or source process is needed after the images are built. The commands below use local images, so no cloud registry is required.
+
+From the repository root, build both images (Docker automatically builds for the host architecture, including Apple Silicon):
+
+```bash
+docker build -t demoguard-operator:0.1.0 ./operator
+docker build -t demoguard-dashboard:0.1.0 ./dashboard
+```
+
+Load the images into the Kind cluster named `demoguard`:
+
+```bash
+kind load docker-image demoguard-operator:0.1.0 --name demoguard
+kind load docker-image demoguard-dashboard:0.1.0 --name demoguard
+```
+
+Install DemoGuard into its own namespace:
+
+```bash
+helm install demoguard ./charts/demoguard -n demoguard --create-namespace
+```
+
+The images default to `IfNotPresent`, which allows Kind to use the images loaded above. The default Prometheus endpoint is `http://prometheus-server.monitoring.svc.cluster.local`.
+
+Access the private ClusterIP dashboard with a local port-forward, then open `http://localhost:8080`:
+
+```bash
+kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
+```
+
+Override image repositories, tags, pull policies, or Prometheus when installing:
+
+```bash
+helm install demoguard ./charts/demoguard -n demoguard --create-namespace \
+  --set operator.image.repository=example/demoguard-operator \
+  --set operator.image.tag=1.2.3 \
+  --set operator.image.pullPolicy=IfNotPresent \
+  --set dashboard.image.repository=example/demoguard-dashboard \
+  --set dashboard.image.tag=1.2.3 \
+  --set dashboard.image.pullPolicy=IfNotPresent \
+  --set prometheus.url=http://prometheus-server.monitoring.svc.cluster.local
+```
+
+The same values can be placed in a YAML file and passed with `-f my-values.yaml`. `nameOverride`, `fullnameOverride`, and each component's `serviceAccount.name` are available when installations need different resource names. Resource requests and limits are under `operator.resources` and `dashboard.resources`.
+
+Uninstall the release:
+
+```bash
+helm uninstall demoguard -n demoguard
+```
+
+Helm intentionally retains CRDs and their custom resources on uninstall. Remove them separately only when their data is no longer needed.

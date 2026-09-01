@@ -1,0 +1,39 @@
+nameOverride: ""
+fullnameOverride: ""
+
+prometheus:
+  url: http://prometheus-server.monitoring.svc.cluster.local
+
+operator:
+  replicaCount: 1
+  image:
+    repository: demoguard-operator
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+dashboard:
+  replicaCount: 1
+  image:
+    repository: demoguard-dashboard
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
