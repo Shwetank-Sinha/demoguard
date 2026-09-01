@@ -210,6 +210,46 @@ Choose a namespace, then select one of its `DemoPolicy` resources. The dashboard
 
 Remediation is review/copy only. DemoGuard never applies changes automatically, and the dashboard has no Apply action.
 
+## Live dashboard results
+
+These screenshots show real, operator-backed `DemoReadiness` assessments from a Kubernetes cluster, not mock dashboard states. The dashboard reads the status published by the DemoGuard operator and does not invent results.
+
+<details>
+  <summary>Existing workload (`default` namespace) — WARNING · 80/100</summary>
+  <br />
+  <p>DemoGuard detected historical container restarts while replicas and rollout remained safe.</p>
+  <img src="docs/images/default-warning.png"
+       alt="DemoGuard dashboard showing a warning assessment for the existing workload in the default namespace"
+       width="1200" />
+</details>
+
+<details>
+  <summary>Healthy scenario with historical restarts — WARNING · 80/100</summary>
+  <br />
+  <p>Static checks passed and the rollout was stable, but four historical container restarts produced a runtime warning.</p>
+  <img src="docs/images/healthy.png"
+       alt="DemoGuard dashboard showing a warning assessment for the healthy scenario due to historical container restarts"
+       width="1200" />
+</details>
+
+<details>
+  <summary>Static configuration risk — BLOCKED · 40/100</summary>
+  <br />
+  <p>The Deployment violated safety requirements, and DemoGuard produced real, reviewable remediation plans.</p>
+  <img src="docs/images/static-risk.png"
+       alt="DemoGuard dashboard showing a blocked static configuration risk assessment with reviewable remediation plans"
+       width="1200" />
+</details>
+
+<details>
+  <summary>Stalled rollout — BLOCKED · 40/100</summary>
+  <br />
+  <p>Kubernetes reported <code>ProgressDeadlineExceeded</code>, and DemoGuard marked the rollout STALLED.</p>
+  <img src="docs/images/stalled-rollout.png"
+       alt="DemoGuard dashboard showing a blocked assessment for a stalled rollout caused by ProgressDeadlineExceeded"
+       width="1200" />
+</details>
+
 ## Live demo scenarios
 
 The manifests in `config/demo-scenarios/` use real Kubernetes state. Create their namespace once:
