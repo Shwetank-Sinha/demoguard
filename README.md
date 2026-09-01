@@ -2,6 +2,111 @@
 
 DemoGuard is a Kubernetes preflight operator that tells teams whether a workload is safe to demo before they present.
 
+## Install and use DemoGuard
+
+Use these steps after cloning the repository to install DemoGuard and assess one of your own applications.
+
+### 1. Prerequisites
+
+- A Kubernetes cluster
+- `kubectl`, configured to access the cluster
+- Docker
+- Helm 3
+- Prometheus (optional, but required for CPU and memory forecasts)
+- Kind (only for the local development path below)
+
+### 2. Clone the repository
+
+```bash
+git clone https://github.com/Shwetank-Sinha/demoguard.git
+cd demoguard
+```
+
+### 3. Local Kind installation
+
+Create a Kind cluster named `demoguard` if you do not already have one:
+
+```bash
+kind create cluster --name demoguard
+```
+
+From the repository root, build both images and load them into the cluster:
+
+```bash
+docker build -t demoguard-operator:0.1.0 ./operator
+docker build -t demoguard-dashboard:0.1.0 ./dashboard
+kind load docker-image demoguard-operator:0.1.0 --name demoguard
+kind load docker-image demoguard-dashboard:0.1.0 --name demoguard
+```
+
+Install DemoGuard with Helm and verify that its pods are running:
+
+```bash
+helm install demoguard ./charts/demoguard -n demoguard --create-namespace
+kubectl get pods -n demoguard
+```
+
+Forward the dashboard service. Keep this command running while you use the dashboard:
+
+```bash
+kubectl -n demoguard port-forward service/demoguard-dashboard 8080:8080
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+### 4. Create a DemoPolicy for your app
+
+Create `my-app-policy.yaml` with this minimal policy:
+
+```yaml
+apiVersion: demoguard.dev/v1alpha1
+kind: DemoPolicy
+metadata:
+  name: my-app
+  namespace: default
+spec:
+  targetNamespace: default
+  targetDeployment: my-app
+  minimumReplicas: 2
+  demoDurationMinutes: 30
+```
+
+Replace `my-app` in `targetDeployment` with the name of your Deployment. If the Deployment is in another namespace, change both `metadata.namespace` and `targetNamespace` to that namespace. Then apply the policy:
+
+```bash
+kubectl apply -f my-app-policy.yaml
+```
+
+### 5. View the result
+
+In the dashboard, select the `default` namespace, select the `my-app` policy, and click **Refresh assessment**.
+
+Alternatively, inspect the generated `DemoReadiness` resource with `kubectl`:
+
+```bash
+kubectl get demoreadiness
+kubectl get demoreadiness my-app-readiness -o yaml
+```
+
+### 6. Using a non-Kind cluster
+
+This repository does not configure a public container registry. Build and push both images to a registry that your cluster can access, then override the chart's image repositories and tags. For example, after pushing both images with the tag `0.1.0`:
+
+```bash
+helm install demoguard ./charts/demoguard \
+  -n demoguard --create-namespace \
+  --set operator.image.repository=YOUR_REGISTRY/demoguard-operator \
+  --set operator.image.tag=0.1.0 \
+  --set dashboard.image.repository=YOUR_REGISTRY/demoguard-dashboard \
+  --set dashboard.image.tag=0.1.0
+```
+
+Replace `YOUR_REGISTRY` with the registry path where you pushed the images. Configure registry credentials in the cluster if that registry is private.
+
+### 7. What happens after installation
+
+DemoGuard watches the `DemoPolicy`, evaluates its target Deployment, and writes the result to a `DemoReadiness` resource. The dashboard reads that resource to display the assessment. DemoGuard never changes your workloads automatically.
+
 ## Why DemoGuard
 
 Demo failures are often predictable, but teams discover the warning signs too late: unsafe rollout settings, missing disruption budgets, undersized resources, restarting pods, unavailable replicas, or a rollout that never completes. DemoGuard evaluates those signals together and records a point-in-time decision before the presentation starts.
